@@ -1,4 +1,6 @@
 //#define TEST
+#define USE_MATERIAL_COLOR
+#define USE_TEXTURES
 #define INFINITY 3.402823e+38
 #define STACK_SIZE 32
 
@@ -25,9 +27,16 @@ uvec3 read3u(uint i) {
     return uvec3(read2u(i),read1u(i+2u));
 }
 
-vec4 read4b(uint i) {
-    uint v=read1u(i);
+uvec4 read4u(uint i) {
+    return uvec4(read3u(i),read1u(i+3u));
+}
+
+vec4 uint_to_vec4(uint v) {
     return vec4(v&0xffu,(v>>8u)&0xffu,(v>>16u)&0xffu,(v>>24u)&0xffu)/255.0;
+}
+
+uvec2 uint_to_uvec2(uint v) {
+    return uvec2(v&0xffffu,(v>>16u)&0xffffu);
 }
 
 vec2 fromBarycentric(float b1,float b2,vec2 a0,vec2 a1,vec2 a2) {
@@ -35,6 +44,10 @@ vec2 fromBarycentric(float b1,float b2,vec2 a0,vec2 a1,vec2 a2) {
 }
 
 vec3 fromBarycentric(float b1,float b2,vec3 a0,vec3 a1,vec3 a2) {
+    return (1.0-b1-b2 )*a0+b1*a1+b2*a2;
+}
+
+vec4 fromBarycentric(float b1,float b2,vec4 a0,vec4 a1,vec4 a2) {
     return (1.0-b1-b2 )*a0+b1*a1+b2*a2;
 }
 
@@ -152,7 +165,7 @@ bool intersectAabb(vec3 P,vec3 invV,vec3 bMin,vec3 bMax, out float enterOut,out 
 }
 
 bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
-                   out uvec3 out_tri, out vec2 out_bc, out float out_t) {
+                   out uvec4 out_tri, out vec2 out_bc, out float out_t) {
     float tmin,tmax;
 
     if(!intersectAabb(P,invV,bmin,bmax,tmin,tmax)) {
@@ -165,7 +178,7 @@ bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
 
     uint stkNum=1u;
     uint primsStart,primsNum;
-    uvec3 last_tri;
+    uvec4 last_tri;
     vec2 last_bc;
     float last_t=INFINITY;
 
@@ -173,7 +186,7 @@ bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
         for(uint i=0u;i<primsNum;i++) {
             vec3 ps[3];
             uint prim=(primsNum==1u)?primsStart:read1u(primsStart+i);
-            uvec3 tri=read3u(prim);//triangle inds
+            uvec4 tri=uvec4(read3u(prim),prim);//triangle inds
 
             for(uint j=0u;j<3u;j++) {
                 ps[j]=uintBitsToFloat(read3u(tri[j]));
@@ -266,12 +279,18 @@ float calcFlare(vec3 ro,vec3 rd,vec3 lightPos,float size) {
     return clamp(pow(q,900.0/o)*1.0,0.0,2.0);
 }
 
+uint calcTexRepeatInd(vec2 uv, uvec2 s) {    
+    uvec2 tc2=uvec2(mod(uv,1.0)*vec2(s));    
+    //dot(tc2,uvec2(1u,s.x))    
+    return tc2.y*s.x+tc2.x;
+}
+
 vec3 render(vec3 ro,vec3 rd) {
     vec3 invRd=1.0/rd;
     vec3 bmin=uintBitsToFloat(read3u(0u));
     vec3 bmax=uintBitsToFloat(read3u(3u));
 
-    uvec3 tri;
+    uvec4 tri;
     vec2 bc;
     float t;
 
@@ -281,16 +300,71 @@ vec3 render(vec3 ro,vec3 rd) {
 
     //
     vec3 ns[3],cs[3];
-
+    vec2 tcs[3];
+    vec4 tangs[3];
+    
+    uint mtrl=read1u(tri.w+3u);
+    vec4 mtrlCol=uint_to_vec4(read1u(mtrl+0u));
+    
+    //if(mtrl>) {return vec3(1.0,0.0,0.0);}
+    
     for(uint j=0u;j<3u;j++) {
         uint ind=tri[j];
-        ns[j]=normalize(read4b(ind+3u).rgb*2.0-1.0);
-        cs[j]=read4b(ind+4u).rgb;
+        
+        ns[j]=(uint_to_vec4(read1u(ind+3u)).rgb*2.0-1.0);
+        //cs[j]=uint_to_vec4(read1u(ind+10u)).rgb;
+        tcs[j]=unpackHalf2x16(read1u(ind+4u));
+        tangs[j]=uint_to_vec4(read1u(ind+5u))*2.0-1.0;
+        
+       // tangs[j]=uintBitsToFloat(read4u(ind+6u));
     }
 
     vec3 nor=normalize(fromBarycentric(bc.x,bc.y,ns[0],ns[1],ns[2]));
-    vec3 mCol=fromBarycentric(bc.x,bc.y,cs[0],cs[1],cs[2]);
+    vec3 mCol=vec3(1.0);//=fromBarycentric(bc.x,bc.y,cs[0],cs[1],cs[2]);
+    vec2 tc=fromBarycentric(bc.x,bc.y,tcs[0],tcs[1],tcs[2]);
+    vec4 tng=fromBarycentric(bc.x,bc.y,tangs[0],tangs[1],tangs[2]);
+    tng.xyz=normalize(tng.xyz);
+    
+    vec3 bnor = normalize(tng.w * cross(nor, tng.xyz));
+    
+    mat3 tbnMat=mat3(tng.x,bnor.x,nor.x,tng.y,bnor.y,nor.y,tng.z,bnor.z,nor.z);
+    mat3 tbnInvMat = mat3(tng.xyz, bnor, nor);
+        
+    uint texLoc0=read1u(mtrl+1u+0u);
+    uint texLoc1=read1u(mtrl+1u+2u);
+    
+    if(texLoc1!=0u) {
+        uvec2 texSize1=uint_to_uvec2(read1u(texLoc1)); 
+        
+       // vec2 bump=vec2(0.005,-0.004);//scale,bias
+        vec2 bump=vec2(0.01,-0.005);//scale,bias
+        
+        vec2 viewTS=normalize(tbnMat*-rd).xy;
+        //viewTS.y = -viewTS.y; // ?? Flip the view vector vertically to match the GL coordinate system ??
+        vec4 norHgt;
+    
+        for(int i = 0; i < 1; i++) {
+            uint texInd1=calcTexRepeatInd(tc,texSize1);
+            norHgt=uint_to_vec4(read1u(texLoc1+1u+texInd1));
+            norHgt.a=1.0-norHgt.a;
+            float height = norHgt.a * bump.x + bump.y;
+            tc += height * norHgt.z * viewTS;
+        }
+        
+        nor=normalize(norHgt.rgb*2.0-1.0);
+        nor=normalize(tbnInvMat*nor);
+       // mCol=norHgt.rgb;//nor*0.5+0.5;
 
+    }
+
+    if(texLoc0!=0u) {
+        uvec2 texSize0=uint_to_uvec2(read1u(texLoc0));
+        uint texInd0=calcTexRepeatInd(tc,texSize0);
+        mCol*=uint_to_vec4(read1u(texLoc0+1u+texInd0)).rgb;
+
+    }
+    
+    mCol*=mtrlCol.rgb;
 #ifdef TEST
     return mCol;
     //return nor*0.5+0.5;
@@ -298,23 +372,24 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 pt=ro+rd*t;
     vec3 eyeDir=normalize(ro-pt);
 
-    vec3 lightPos=vec3(cos(iGlobalTime*0.5)*sin(iGlobalTime*0.5)*3.0,0.0,-5.0+sin(iGlobalTime*0.5)*12.0);
-    vec3 lightDir=normalize(lightPos-pt);
+    vec3 lightPos2=vec3(cos(iGlobalTime*0.5)*sin(iGlobalTime*0.5)*1.0,-1.0,-5.0+sin(iGlobalTime*0.25)*12.0);
+    //vec3 lightPos2=lightPos+vec3(cos(iGlobalTime*0.25),0.0,sin(iGlobalTime*0.25))*2.0;
+    vec3 lightDir=normalize(lightPos2-pt);
     vec3 invLightDir=1.0/lightDir;
-    float lightDist=length(lightPos-pt);
+    float lightDist=length(lightPos2-pt);
 
     //return dirLight(nor,eyeDir,rd,mCol,vec3(1.0),0.1, 0.1);
     vec3 c= vec3(0.0);
 
 
-    if(!intersectTreeP(lightPos,-lightDir,-invLightDir,bmin,bmax,lightDist-1e-4)) {
-        c=calcPtLightCol(pt,nor,lightPos,vec3(0.6,0.05,0.001),mCol,vec3(1.0),0.2, 0.2);
+    if(!intersectTreeP(lightPos2,-lightDir,-invLightDir,bmin,bmax,lightDist-1e-4)) {
+        c=calcPtLightCol(pt,nor,lightPos2,vec3(1.0,0.01,0.001),mCol,vec3(1.0),0.2, 0.2);
     } else {
-        c=mCol*0.1;
+       c=mCol*0.1;
     }
 
-    if(t>=length(lightPos-ro)) {
-        c=mix(c,vec3(3.0),calcFlare(ro,rd,lightPos,0.05));
+    if(t>=length(lightPos2-ro)) {
+        c=mix(c,vec3(3.0),calcFlare(ro,rd,lightPos2,0.05));
     }
 
     return min(c,1.0);
@@ -339,9 +414,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 ms=(iMouse.xy==vec2(0.0))?vec2(0.0):(iMouse.xy/iResolution.xy)*2.0-1.0;
 
 #ifndef TEST
-    mat3 viewRot=lookRot(ms.x*-4.0+3.14,ms.y*1.7);
-    vec3 ro=vec3(2.0,2.0,-3.0);
+    //mat3 viewRot=lookRot(ms.x*-4.0+3.14,ms.y*1.7);
+    //vec3 ro=vec3(2.0,2.0,-3.0);
     //vec3 ro=vec3(1.0,3.0,1.0);
+    vec3 ro=viewPos;
 #else
     mat3 viewRot=orbitRot(ms.x*2.0,ms.y*2.0);
     vec3 ro=viewRot*vec3(0.0,0.0,10.0);
@@ -353,7 +429,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     vec3 col=render(ro,rd);
 
-    col=mix(col,vec3(1.0),step(abs(floor(length(fragCoord-iMouse.xy))-2.0),0.0));
+    //col=mix(col,vec3(1.0),step(abs(floor(length(fragCoord-iMouse.xy))-2.0),0.0));
 
     fragColor=vec4(col,1.0);
 }
