@@ -6,9 +6,9 @@ individual data layout:
 node(type/right/primtiveIndex/triangle,split/primitiveNum)
 primitive(triangleIndices[primitiveNum])
 triangle(vertexIndices[3],material)
+vertex(px,py,pz,normal,texcoords[uvLayers],tangents[uvLayers],colors[colLayers])
 material(color,(textureIndex,uvIndex)[])
 texture(width/height,data[])
-vertex(px,py,pz,normal,colors[],texcoords[],tangents[])
 """
 
 bl_info = {
