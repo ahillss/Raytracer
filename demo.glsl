@@ -354,29 +354,38 @@ vec3 render(vec3 ro,vec3 rd) {
     if(texLoc1!=0u) {
         uvec2 texSize1=uint_to_uvec2(read1u(texLoc1)); 
         
-        vec2 bump=vec2(0.01,-0.007);//scale,bias
+        vec2 bump=vec2(0.01,-0.008);//scale,bias
        // vec2 bump=vec2(0.01,-0.005);//scale,bias
         
         vec2 viewTS=normalize(tbnMat*-rd).xy;
         vec4 norHgt;
-    
-        for(int i = 0; i < 1; i++) {
-            norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
-            norHgt.a=1.0-norHgt.a;
-            float height = norHgt.a * bump.x + bump.y;
-            tc += height * norHgt.z * viewTS;
+        
+        if(useBumpMapping) {
+            for(int i = 0; i < 1; i++) {
+                norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
+                norHgt.a=1.0-norHgt.a;
+                float height = norHgt.a * bump.x + bump.y;
+                tc += height * norHgt.z * viewTS;
+            }
+        } else {
+                norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
         }
         
-        nor=normalize(norHgt.rgb*2.0-1.0);
-        nor=normalize(tbnInvMat*nor);
+        if(useNormalMapping) {
+            nor=normalize(norHgt.rgb*2.0-1.0);
+            nor=normalize(tbnInvMat*nor);
+        }
        // mCol=norHgt.rgb;//nor*0.5+0.5;
 
     }
 
     if(texLoc0!=0u) {
         uvec2 texSize0=uint_to_uvec2(read1u(texLoc0));
-        //mCol*=sampleNearest(tc,texLoc0+1u,texSize0).rgb;
-        mCol*=sampleLinear(tc,texLoc0+1u,texSize0).rgb;     
+        if(useLinearFiltering) {
+            mCol*=sampleLinear(tc,texLoc0+1u,texSize0).rgb;
+        } else {
+            mCol*=sampleNearest(tc,texLoc0+1u,texSize0).rgb;
+        }  
 
     }
     

@@ -9,6 +9,14 @@ var hasError=false;
 var viewPos=[0,0,0],viewYawPitch=[0,0];
 var mouseLocked=false,moving=[0,0,0];
 
+var MyMenu = function() {
+    this.bumpMapping=true;
+    this.normalMapping=true;
+    this.linearFiltering = false;
+};
+
+var myMenu = new MyMenu();;
+ 
 function lookRot(yaw,pitch) {
     var sx=Math.sin(pitch);
     var sy=Math.sin(yaw);
@@ -66,6 +74,10 @@ function onAnimate() {
     prog.uniform3f("iResolution",width,height,0);
     prog.uniform1f("iGlobalTime",t);
     prog.uniform4fv("iMouse",cursor2);
+    
+    prog.uniform1i("useLinearFiltering",myMenu.linearFiltering);
+    prog.uniform1i("useBumpMapping",myMenu.bumpMapping);
+    prog.uniform1i("useNormalMapping",myMenu.normalMapping);
 
     screenGeom.draw(width,height);
 
@@ -126,7 +138,12 @@ window.onload=(function() {
     canvas.onselectstart=null;
 
     registerInputEvents(canvas);
-
+ 
+  var gui = new dat.GUI();
+  gui.add(myMenu, 'linearFiltering');
+  gui.add(myMenu, 'bumpMapping');
+  gui.add(myMenu, 'normalMapping');
+  
     if(!gl) {
         return;
     }
@@ -139,6 +156,9 @@ window.onload=(function() {
     header+="uniform sampler2D iChannel2;";
     header+="uniform vec3 viewPos;uniform mat3 viewRot;";
     header+="uniform vec3 lightPos;";
+    header+="uniform bool useLinearFiltering;";
+    header+="uniform bool useBumpMapping;";
+    header+="uniform bool useNormalMapping;";
 
     var footer="void main(){mainImage(outColor,gl_FragCoord.xy);}";
 
