@@ -279,11 +279,29 @@ float calcFlare(vec3 ro,vec3 rd,vec3 lightPos,float size) {
     return clamp(pow(q,900.0/o)*1.0,0.0,2.0);
 }
 
-uint calcTexRepeatInd(vec2 uv, uvec2 s) {    
-    uvec2 tc2=uvec2(mod(uv,1.0)*vec2(s));    
-    //dot(tc2,uvec2(1u,s.x))    
-    return tc2.y*s.x+tc2.x;
+vec4 sampleNearest(vec2 tc,uint texStart,uvec2 texSize) {
+    uvec2 tc2=uvec2(mod(tc,1.0)*vec2(texSize));
+    uint ind=tc2.y*texSize.x+tc2.x;
+    return uint_to_vec4(read1u(texStart+ind));
 }
+
+vec4 sampleLinear(vec2 TexCoord,uint texStart,uvec2 texSize) {
+    vec2 texSizef=vec2(texSize);
+    vec2 invTexSizef=1.0/texSizef;
+    
+    //vec2 uv=TexCoord*texSizef;
+    //uvec2 uvi=uvec2(uv);
+    vec2 uvf=fract(TexCoord*texSizef);// uv-vec2(uvi);
+    
+    vec4 n0 = sampleNearest(TexCoord,texStart,texSize); 
+    vec4 n1 = sampleNearest(TexCoord+vec2(invTexSizef.x,0.0),texStart,texSize);
+    vec4 n2 = sampleNearest(TexCoord+vec2(0.0,invTexSizef.y),texStart,texSize) ;
+    vec4 n3 = sampleNearest(TexCoord+invTexSizef,texStart,texSize);
+        
+    return mix ( mix(n0,n1,uvf.x), mix(n2,n3,uvf.x), uvf.y ); 
+
+}
+
 
 vec3 render(vec3 ro,vec3 rd) {
     vec3 invRd=1.0/rd;
@@ -336,16 +354,14 @@ vec3 render(vec3 ro,vec3 rd) {
     if(texLoc1!=0u) {
         uvec2 texSize1=uint_to_uvec2(read1u(texLoc1)); 
         
-       // vec2 bump=vec2(0.005,-0.004);//scale,bias
-        vec2 bump=vec2(0.01,-0.005);//scale,bias
+        vec2 bump=vec2(0.01,-0.007);//scale,bias
+       // vec2 bump=vec2(0.01,-0.005);//scale,bias
         
         vec2 viewTS=normalize(tbnMat*-rd).xy;
-        //viewTS.y = -viewTS.y; // ?? Flip the view vector vertically to match the GL coordinate system ??
         vec4 norHgt;
     
         for(int i = 0; i < 1; i++) {
-            uint texInd1=calcTexRepeatInd(tc,texSize1);
-            norHgt=uint_to_vec4(read1u(texLoc1+1u+texInd1));
+            norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
             norHgt.a=1.0-norHgt.a;
             float height = norHgt.a * bump.x + bump.y;
             tc += height * norHgt.z * viewTS;
@@ -359,8 +375,8 @@ vec3 render(vec3 ro,vec3 rd) {
 
     if(texLoc0!=0u) {
         uvec2 texSize0=uint_to_uvec2(read1u(texLoc0));
-        uint texInd0=calcTexRepeatInd(tc,texSize0);
-        mCol*=uint_to_vec4(read1u(texLoc0+1u+texInd0)).rgb;
+        //mCol*=sampleNearest(tc,texLoc0+1u,texSize0).rgb;
+        mCol*=sampleLinear(tc,texLoc0+1u,texSize0).rgb;     
 
     }
     
