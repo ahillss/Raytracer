@@ -361,7 +361,7 @@ vec3 render(vec3 ro,vec3 rd) {
         vec4 norHgt;
         
         if(useBumpMapping) {
-            for(int i = 0; i < 1; i++) {
+            for(int i = 0; i < 4; i++) {
                 norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
                 norHgt.a=1.0-norHgt.a;
                 float height = norHgt.a * bump.x + bump.y;
@@ -375,6 +375,7 @@ vec3 render(vec3 ro,vec3 rd) {
             nor=normalize(norHgt.rgb*2.0-1.0);
             nor=normalize(tbnInvMat*nor);
         }
+        //mCol*=norHgt.a;
        // mCol=norHgt.rgb;//nor*0.5+0.5;
 
     }
@@ -397,7 +398,7 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 pt=ro+rd*t;
     vec3 eyeDir=normalize(ro-pt);
 
-    vec3 lightPos2=vec3(cos(iGlobalTime*0.5)*sin(iGlobalTime*0.5)*1.0,-1.0,-5.0+sin(iGlobalTime*0.25)*12.0);
+    vec3 lightPos2=vec3(cos(iGlobalTime*0.1)*sin(iGlobalTime*0.1)*1.0,-1.0,-5.0+sin(iGlobalTime*0.5)*12.0);
     //vec3 lightPos2=lightPos+vec3(cos(iGlobalTime*0.25),0.0,sin(iGlobalTime*0.25))*2.0;
     vec3 lightDir=normalize(lightPos2-pt);
     vec3 invLightDir=1.0/lightDir;

@@ -48,7 +48,7 @@ class MyExportAMesh(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 
         #
         mes=do_meshes(self.useSelected,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useTransform,self.useMaterials,self.useTextures)
-
+ 
         #    
         mtrl_inds=dict([(n,i) for i,n in enumerate(mes["material_names"])])
         uv_inds=dict([(n,i) for i,n in enumerate(mes["uv_names"])])
@@ -524,15 +524,7 @@ def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTr
     #get object meshes
     for ob in objects2:
         worldMat=fixModelMat*ob.matrix_world if useTransform else fixModelMat
-        # normalMat=worldMat.normalized() if useTransform else fixNormalMat
-
-        normalMat=fixNormalMat
-
-        if useTransform:
-            normalMat=worldMat.copy()
-            normalMat.invert()
-            normalMat.transpose()
-            normalMat=normalMat.to_3x3()
+        normalMat=fixNormalMat*ob.matrix_world.to_quaternion().to_matrix() if useTransform else fixNormalMat
 
         myme=do_mesh(ob.data,worldMat,normalMat,useNormals,useTexcoords,useTangents,useColors)
 
@@ -746,6 +738,7 @@ def do_mesh(me,modelMat,normalMat,useNormals,useTexcoords, useTangents,useColors
                     tang=calc_tangent_space(pts[triVertInds[0]],pts[triVertInds[1]],pts[triVertInds[2]], tcs[triVertInds[0]],tcs[triVertInds[1]],tcs[triVertInds[2]], nor)
                     uvFaceTriTangs[uvInd][faceInd].append(tang)
 
+
     #gen vert+index for each poly
     for faceInd, face in enumerate(me.tessfaces):
         # if useSelectedFaces and not face.select:
@@ -938,9 +931,11 @@ def do_mesh(me,modelMat,normalMat,useNormals,useTexcoords, useTangents,useColors
     #apply transforms
     for i,x in enumerate(my_positions):
         my_positions[i]=modelMat*x;
-
+        
+    #print(normalMat)
     for i,x in enumerate(my_normals):
         my_normals[i]=normalMat*x;
+
 
     for k,v in my_tangents.items():
         for i,tg in enumerate(v):
