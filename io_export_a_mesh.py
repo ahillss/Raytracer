@@ -25,7 +25,286 @@ bl_info = {
 
 import bpy,bmesh,bpy_extras,struct,os,mathutils,functools,base64,math,re,lzma,binascii,time
 
-class MyExportAMesh(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors,useMaterials,useTextures,useTransform,useSelected):
+    startTime=time.time()
+    
+    #
+    print("generating vertices...")
+
+    #
+    mes=do_meshes(useSelected,useNormals,useTexcoords,useTangents,useColors,useTransform,useMaterials,useTextures)
+
+    #    
+    mtrl_inds=dict([(n,i) for i,n in enumerate(mes["material_names"])])
+    uv_inds=dict([(n,i) for i,n in enumerate(mes["uv_names"])])
+    col_inds=dict([(n,i) for i,n in enumerate(mes["color_names"])])
+    texMaxSlotNum=max([0]+[tex["slot"]+1 for ma in mes["materials"].values() for tex in ma["textures"]])
+    imgsByName=dict([(re.sub("^//","",img.filepath),img) for img in bpy.data.images])
+    imgs=list(set([imgsByName[tex["image"]] for ma in mes["materials"].values() for tex in ma["textures"]]))
+    img_inds=dict([(re.sub("^//","",img.filepath),i) for i,img in enumerate(imgs)])
+    
+    #
+    print("building kd-tree...")
+
+    #
+    kdtree=buildKdTree(mes["positions"],mes["indices"])
+
+    #
+    print("organising data...")
+
+    #
+    outNodeList=[]
+
+    #generate outNodeList
+    traverseStk=[kdtree["root"]]
+
+    while len(traverseStk)>0:
+        n=traverseStk.pop()
+        n["index"]=len(outNodeList)
+        outNodeList.append(n)
+
+        if n["type"]!=3:
+            traverseStk.append(n["right"])
+            traverseStk.append(n["left"])
+
+    #prims
+    outPrimIndsTotalNum=0
+
+    for n in outNodeList:
+        if n["type"]==3:
+            primInds=n["primInds"]
+            primIndsNum=len(primInds)
+
+            if primIndsNum==1:
+                n["primIndsStart"]=primInds[0]
+            elif primIndsNum>1:
+                n["primIndsStart"]=outPrimIndsTotalNum
+                outPrimIndsTotalNum+=primIndsNum
+            else:
+                n["primIndsStart"]=0
+
+    #outTris
+    outTris=[]
+
+    for n in mes["material_names"]:
+        ma=mes["materials"][n]
+        inds=mes["indices"][ma["start"]:ma["end"]]
+
+        for i in range(0,len(inds)//3):
+            tri=[inds[i*3+j] for j in range(0,3)]+[mtrl_inds[n]]
+            outTris.append(tri)
+            
+
+    #materials and textures
+    outMtrls=[]
+    
+    for maName in mes["material_names"]:
+        ma=mes["materials"][maName]
+        outMtrlTexs=[None for i in range(0,texMaxSlotNum)]
+
+        for tex in ma["textures"]:
+            img_ind=img_inds[tex["image"]]
+            uv_ind=uv_inds[tex["uv"]]
+            outMtrlTexs[tex["slot"]]=[img_ind,uv_ind]
+        
+        outMtrl={"col":ma["color"],"texs":outMtrlTexs}
+        outMtrls.append(outMtrl)
+                
+    #offsets
+    outNodesOffset=6
+    outNodeSizeOffset=2;
+    outPrimsOffset=outNodesOffset+len(outNodeList)*outNodeSizeOffset
+    outTrisOffset=outPrimsOffset+outPrimIndsTotalNum
+    outTriSizeOffset=3
+
+    if useMaterials:
+        outTriSizeOffset+=1
+
+    outVertsOffset=outTrisOffset+(mes["indices_num"]//3)*outTriSizeOffset
+    outVertSizeOffset=3
+
+    if useNormals:
+        outVertSizeOffset+=1
+
+    if useTexcoords:
+        outVertSizeOffset+=len(mes["texcoords"])
+
+    if useTangents:
+        outVertSizeOffset+=len(mes["tangents"]) #*5
+
+    if useColors:
+        outVertSizeOffset+=len(mes["colors"])
+
+    outMtrlOffset=outVertsOffset+mes["vertices_num"]*outVertSizeOffset
+    outMtrlSizeOffset=0
+    
+    if useMaterials:
+        outMtrlSizeOffset+=1
+
+    if useTextures:
+        outMtrlSizeOffset+=texMaxSlotNum*2
+                    
+    if useMaterials:
+        for tri in outTris:
+            tri[3]*=outMtrlSizeOffset
+            tri[3]+=outMtrlOffset
+
+    outImgOffset=outMtrlOffset+(len(mes["materials"])*outMtrlSizeOffset if useMaterials else 0)
+
+    endOffset=outImgOffset
+    
+    imageOffsets=[]
+    
+    if useTextures:
+        for img in imgs:
+            imageOffsets.append(endOffset)
+            endOffset+=1+len(img.pixels)//4
+
+        for outMtrl in outMtrls:
+            for tex in outMtrl["texs"]:
+                if tex!=None:
+                    tex[0]=imageOffsets[tex[0]]
+   
+    for n in outNodeList:
+        n["index"]*=outNodeSizeOffset
+        n["index"]+=outNodesOffset
+
+        if n["type"]==3:
+            primInds=n["primInds"]
+            primIndsNum=len(primInds)
+
+            if primIndsNum>1:
+                n["primIndsStart"]+=outPrimsOffset
+
+                for p in range(0,primIndsNum):
+                    primInds[p]*=outTriSizeOffset
+                    primInds[p]+=outTrisOffset
+
+            elif primIndsNum==1:
+                n["primIndsStart"]*=outTriSizeOffset
+                n["primIndsStart"]+=outTrisOffset
+
+    for i in range(0,len(outTris)):
+        for j in range(0,3):
+            outTris[i][j]*=outVertSizeOffset
+            outTris[i][j]+=outVertsOffset
+
+    #
+    print("offsets {} {} {} {} {} {} {}".format(outNodesOffset,outPrimsOffset,outTrisOffset,outVertsOffset,outMtrlOffset,outImgOffset,endOffset))
+
+    #
+    print("nodes = {}".format(len(outNodeList)))
+    print("triangles = {}".format(mes["indices_num"]//3))
+    print("depth = {}".format(kdtree["depth"]))
+    
+    #
+    print("writing file...")
+
+    #
+    #with lzma.open(filepath,"wb",format=lzma.FORMAT_ALONE) as fh:
+    #with lzma_open_for_write(filepath) as fh:
+    with theWriter(filepath) as fh:
+    
+        #write min bound
+        fh.write(struct.pack('3f',*kdtree["min"]))
+
+        #write max bound
+        fh.write(struct.pack('3f',*kdtree["max"]))
+
+        #
+        print("file node offset = {}".format(fh.tell()/4))
+
+        #write nodes
+        for n in outNodeList:
+            type=n["type"]
+
+            if type==3: #on leaf
+                primIndsNum=len(n["primInds"])
+                fh.write(struct.pack('2I',(primIndsNum<<2)|type,n["primIndsStart"]))
+            else: #on branch
+                fh.write(struct.pack('If',(n["right"]["index"]<<2)|type,n["split"]))
+
+        #
+        print("file prims offset = {}".format(fh.tell()/4))
+
+        #write prims
+        for n in outNodeList:
+            if n["type"]==3:
+                primInds=n["primInds"]
+                primIndsNum=len(primInds)
+
+                if primIndsNum>1:
+                    fh.write(struct.pack('{}I'.format(primIndsNum),*primInds))
+
+
+        #
+        print("file outTris offset = {}".format(fh.tell()/4))
+
+        #write outTris
+        for tri in outTris:
+            fh.write(struct.pack('3I',*(tri[0:3])))
+
+            if useMaterials or useTextures:
+                fh.write(struct.pack('I',tri[3]))
+
+        #
+        print("file verts offset = {}".format(fh.tell()/4))
+
+        #write vertices
+        for i in range(0,mes["vertices_num"]):
+            fh.write(struct.pack('3f',*mes["positions"][i*3:i*3+3]))
+
+            if useNormals:
+                fh.write(struct.pack('3Bx',*[int((x*0.5+0.5)*255.0) for x in mes["normals"][i*3:i*3+3]]))
+
+            if useTexcoords:
+                for k in mes["uv_names"]:
+                    fh.write(struct.pack('2H',*[half_float_compress(x) for x in mes["texcoords"][k][i*2:i*2+2]]))
+
+            if useTangents:
+                for k in mes["uv_names"]:
+                    fh.write(struct.pack('4B',*[int((x*0.5+0.5)*255.0) for x in mes["tangents"][k][i*4:i*4+4]]))
+                    #fh.write(struct.pack('4f',*mes["tangents"][k][i*4:i*4+4]))
+
+            if useColors:
+                for k in mes["color_names"]:
+                    fh.write(struct.pack('3Bx',*[int(x*255.0) for x in mes["colors"][k][i*3:i*3+3]]))
+
+
+        #
+        print("file mtrl offset = {}".format(fh.tell()/4))
+        
+        #write materials
+        for outMtrl in outMtrls:
+            if useMaterials:
+                fh.write(struct.pack('4B',*[int(x*255.0) for x in outMtrl["col"]]))
+            
+            if useTextures:
+                for tex in outMtrl["texs"]:
+                    if tex==None:
+                        fh.write(struct.pack('2I',0,0))
+                    else:
+                        fh.write(struct.pack('2I',tex[0],tex[1]))
+
+
+        #
+        print("file image offset = {}".format(fh.tell()/4))
+        
+        #
+        if useTextures:
+            for img in imgs:
+                fh.write(struct.pack('2H',img.size[0],img.size[1]))
+                fh.write(bytes([int(p*255) for p in img.pixels]))
+                
+        
+        #
+        print("file end offset = {}".format(fh.tell()/4))
+
+    print('Exported to "%s", taking %.3f seconds.'%(filepath,time.time()-startTime))
+    
+############################################
+
+class MyExportAMeshDat(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "my_export_mesh.dat";
     bl_label = "Export";
     bl_options = {'PRESET'};
@@ -41,295 +320,94 @@ class MyExportAMesh(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     useSelected=bpy.props.BoolProperty(name="selected",default=False)
 
     def execute(self, context):
-        startTime=time.time()
-        
-        #
-        print("generating vertices...")
-
-        #
-        mes=do_meshes(self.useSelected,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useTransform,self.useMaterials,self.useTextures)
- 
-        #    
-        mtrl_inds=dict([(n,i) for i,n in enumerate(mes["material_names"])])
-        uv_inds=dict([(n,i) for i,n in enumerate(mes["uv_names"])])
-        col_inds=dict([(n,i) for i,n in enumerate(mes["color_names"])])
-        texMaxSlotNum=max([0]+[tex["slot"]+1 for ma in mes["materials"].values() for tex in ma["textures"]])
-        imgsByName=dict([(re.sub("^//","",img.filepath),img) for img in bpy.data.images])
-        imgs=list(set([imgsByName[tex["image"]] for ma in mes["materials"].values() for tex in ma["textures"]]))
-        img_inds=dict([(re.sub("^//","",img.filepath),i) for i,img in enumerate(imgs)])
-        
-        #
-        print("building kd-tree...")
-
-        #
-        kdtree=buildKdTree(mes["positions"],mes["indices"])
-
-        #
-        print("organising data...")
-
-        #
-        outNodeList=[]
-
-        #generate outNodeList
-        traverseStk=[kdtree["root"]]
-
-        while len(traverseStk)>0:
-            n=traverseStk.pop()
-            n["index"]=len(outNodeList)
-            outNodeList.append(n)
-
-            if n["type"]!=3:
-                traverseStk.append(n["right"])
-                traverseStk.append(n["left"])
-
-        #prims
-        outPrimIndsTotalNum=0
-
-        for n in outNodeList:
-            if n["type"]==3:
-                primInds=n["primInds"]
-                primIndsNum=len(primInds)
-
-                if primIndsNum==1:
-                    n["primIndsStart"]=primInds[0]
-                elif primIndsNum>1:
-                    n["primIndsStart"]=outPrimIndsTotalNum
-                    outPrimIndsTotalNum+=primIndsNum
-                else:
-                    n["primIndsStart"]=0
-
-        #outTris
-        outTris=[]
-
-        for n in mes["material_names"]:
-            ma=mes["materials"][n]
-            inds=mes["indices"][ma["start"]:ma["end"]]
-
-            for i in range(0,len(inds)//3):
-                tri=[inds[i*3+j] for j in range(0,3)]+[mtrl_inds[n]]
-                outTris.append(tri)
-                
-
-        #materials and textures
-        outMtrls=[]
-        
-        for maName in mes["material_names"]:
-            ma=mes["materials"][maName]
-            outMtrlTexs=[None for i in range(0,texMaxSlotNum)]
-
-            for tex in ma["textures"]:
-                img_ind=img_inds[tex["image"]]
-                uv_ind=uv_inds[tex["uv"]]
-                outMtrlTexs[tex["slot"]]=[img_ind,uv_ind]
-            
-            outMtrl={"col":ma["color"],"texs":outMtrlTexs}
-            outMtrls.append(outMtrl)
-                    
-        #offsets
-        outNodesOffset=6
-        outNodeSizeOffset=2;
-        outPrimsOffset=outNodesOffset+len(outNodeList)*outNodeSizeOffset
-        outTrisOffset=outPrimsOffset+outPrimIndsTotalNum
-        outTriSizeOffset=3
-
-        if self.useMaterials:
-            outTriSizeOffset+=1
-
-        outVertsOffset=outTrisOffset+(mes["indices_num"]//3)*outTriSizeOffset
-        outVertSizeOffset=3
-
-        if self.useNormals:
-            outVertSizeOffset+=1
-
-        if self.useTexcoords:
-            outVertSizeOffset+=len(mes["texcoords"])
-
-        if self.useTangents:
-            outVertSizeOffset+=len(mes["tangents"]) #*5
-
-        if self.useColors:
-            outVertSizeOffset+=len(mes["colors"])
-
-        outMtrlOffset=outVertsOffset+mes["vertices_num"]*outVertSizeOffset
-        outMtrlSizeOffset=0
-        
-        if self.useMaterials:
-            outMtrlSizeOffset+=1
-
-        if self.useTextures:
-            outMtrlSizeOffset+=texMaxSlotNum*2
-                        
-        if self.useMaterials:
-            for tri in outTris:
-                tri[3]*=outMtrlSizeOffset
-                tri[3]+=outMtrlOffset
-
-        outImgOffset=outMtrlOffset+(len(mes["materials"])*outMtrlSizeOffset if self.useMaterials else 0)
-
-        endOffset=outImgOffset
-        
-        imageOffsets=[]
-        
-        if self.useTextures:
-            for img in imgs:
-                imageOffsets.append(endOffset)
-                endOffset+=1+len(img.pixels)//4
-
-            for outMtrl in outMtrls:
-                for tex in outMtrl["texs"]:
-                    if tex!=None:
-                        tex[0]=imageOffsets[tex[0]]
-       
-        for n in outNodeList:
-            n["index"]*=outNodeSizeOffset
-            n["index"]+=outNodesOffset
-
-            if n["type"]==3:
-                primInds=n["primInds"]
-                primIndsNum=len(primInds)
-
-                if primIndsNum>1:
-                    n["primIndsStart"]+=outPrimsOffset
-
-                    for p in range(0,primIndsNum):
-                        primInds[p]*=outTriSizeOffset
-                        primInds[p]+=outTrisOffset
-
-                elif primIndsNum==1:
-                    n["primIndsStart"]*=outTriSizeOffset
-                    n["primIndsStart"]+=outTrisOffset
-
-        for i in range(0,len(outTris)):
-            for j in range(0,3):
-                outTris[i][j]*=outVertSizeOffset
-                outTris[i][j]+=outVertsOffset
-
-        #
-        print("offsets {} {} {} {} {} {} {}".format(outNodesOffset,outPrimsOffset,outTrisOffset,outVertsOffset,outMtrlOffset,outImgOffset,endOffset))
-
-        #
-        print("nodes = {}".format(len(outNodeList)))
-        print("triangles = {}".format(mes["indices_num"]//3))
-        print("depth = {}".format(kdtree["depth"]))
-        
-        #
-        print("writing file...")
-
-        #
-        with lzma.open(self.filepath,"wb",format=lzma.FORMAT_ALONE) as fh:
-            #write min bound
-            fh.write(struct.pack('3f',*kdtree["min"]))
-
-            #write max bound
-            fh.write(struct.pack('3f',*kdtree["max"]))
-
-            #
-            print("file node offset = {}".format(fh.tell()/4))
-
-            #write nodes
-            for n in outNodeList:
-                type=n["type"]
-
-                if type==3: #on leaf
-                    primIndsNum=len(n["primInds"])
-                    fh.write(struct.pack('2I',(primIndsNum<<2)|type,n["primIndsStart"]))
-                else: #on branch
-                    fh.write(struct.pack('If',(n["right"]["index"]<<2)|type,n["split"]))
-
-            #
-            print("file prims offset = {}".format(fh.tell()/4))
-
-            #write prims
-            for n in outNodeList:
-                if n["type"]==3:
-                    primInds=n["primInds"]
-                    primIndsNum=len(primInds)
-
-                    if primIndsNum>1:
-                        fh.write(struct.pack('{}I'.format(primIndsNum),*primInds))
-
-
-            #
-            print("file outTris offset = {}".format(fh.tell()/4))
-
-            #write outTris
-            for tri in outTris:
-                fh.write(struct.pack('3I',*(tri[0:3])))
-
-                if self.useMaterials or self.useTextures:
-                    fh.write(struct.pack('I',tri[3]))
-
-            #
-            print("file verts offset = {}".format(fh.tell()/4))
-
-            #write vertices
-            for i in range(0,mes["vertices_num"]):
-                fh.write(struct.pack('3f',*mes["positions"][i*3:i*3+3]))
-
-                if self.useNormals:
-                    fh.write(struct.pack('3Bx',*[int((x*0.5+0.5)*255.0) for x in mes["normals"][i*3:i*3+3]]))
-
-                if self.useTexcoords:
-                    for k in mes["uv_names"]:
-                        fh.write(struct.pack('2H',*[half_float_compress(x) for x in mes["texcoords"][k][i*2:i*2+2]]))
-
-                if self.useTangents:
-                    for k in mes["uv_names"]:
-                        fh.write(struct.pack('4B',*[int((x*0.5+0.5)*255.0) for x in mes["tangents"][k][i*4:i*4+4]]))
-                        #fh.write(struct.pack('4f',*mes["tangents"][k][i*4:i*4+4]))
-
-                if self.useColors:
-                    for k in mes["color_names"]:
-                        fh.write(struct.pack('3Bx',*[int(x*255.0) for x in mes["colors"][k][i*3:i*3+3]]))
-
-
-            #
-            print("file mtrl offset = {}".format(fh.tell()/4))
-            
-            #write materials
-            for outMtrl in outMtrls:
-                if self.useMaterials:
-                    fh.write(struct.pack('4B',*[int(x*255.0) for x in outMtrl["col"]]))
-                
-                if self.useTextures:
-                    for tex in outMtrl["texs"]:
-                        if tex==None:
-                            fh.write(struct.pack('2I',0,0))
-                        else:
-                            fh.write(struct.pack('2I',tex[0],tex[1]))
-
-
-            #
-            print("file image offset = {}".format(fh.tell()/4))
-            
-            #
-            if self.useTextures:
-                for img in imgs:
-                    fh.write(struct.pack('2H',img.size[0],img.size[1]))
-                    fh.write(bytes([int(p*255) for p in img.pixels]))
-                    
-            
-            #
-            print("file end offset = {}".format(fh.tell()/4))
-
-        print('Exported to "%s", taking %.3f seconds.'%(self.filepath,time.time()-startTime))
+        runExporter(lzma_open_for_write,self.filepath,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useMaterials,self.useTextures,self.useTransform,self.useSelected)
         return {'FINISHED'};
 
+class MyExportAMeshPNG(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
+    bl_idname = "my_export_mesh.png";
+    bl_label = "Export";
+    bl_options = {'PRESET'};
+    filename_ext = ".png";
+
+    useNormals=bpy.props.BoolProperty(name="normals",default=True)
+    useTexcoords=bpy.props.BoolProperty(name="texcoords",default=False)
+    useTangents=bpy.props.BoolProperty(name="tangents",default=False)
+    useColors=bpy.props.BoolProperty(name="colors",default=False)
+    useMaterials=bpy.props.BoolProperty(name="materials",default=False)
+    useTextures=bpy.props.BoolProperty(name="textures",default=False)
+    useTransform=bpy.props.BoolProperty(name="transform",default=True)
+    useSelected=bpy.props.BoolProperty(name="selected",default=False)
+
+    def execute(self, context):
+        runExporter(png_open_for_write2,self.filepath,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useMaterials,self.useTextures,self.useTransform,self.useSelected)
+        return {'FINISHED'};
+
+        
+##########################################
+def lzma_open_for_write(fn):
+    return lzma.open(fn,"wb",format=lzma.FORMAT_ALONE)
+
+def next_greater_power_of_2(x):
+    return 2**(x-1).bit_length()
+    
+def png_open_for_write2(fn):
+    return png_open_for_write(fn)
+    
+class png_open_for_write():
+    def __init__(self, fn):
+        self.fn = fn
+        self.pixels=[]
+
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, type, value, traceback):
+        paddedPixelsNum=next_greater_power_of_2(len(self.pixels)//4)
+        self.pixels.extend([0.0]*4*paddedPixelsNum)
+        
+        pixelsWidth=1
+        pixelsHeight=1
+        
+        while len(self.pixels)//4>pixelsWidth*pixelsHeight:
+            if pixelsWidth<=pixelsHeight:
+                pixelsWidth*=2
+            else:
+                pixelsHeight*=2
+        
+        image = bpy.data.images.new("untitled",width=pixelsWidth,height=pixelsHeight,alpha=True)
+        image.pixels = self.pixels
+        image.filepath_raw = self.fn
+        image.file_format = 'PNG'
+
+        try:
+            image.save()
+        except Exception as error:
+            raise error
+        finally:
+            bpy.data.images.remove(image)
+            
+    def write(self,data):
+        self.pixels.extend([x/255.0 for x in bytearray(data)])
+        
+    def tell(self):
+        return len(self.pixels)
+    
 ##########################################
 
 def menu_func(self, context):
-  self.layout.operator(MyExportAMesh.bl_idname, text="Export A Mesh .dat");
+    self.layout.operator(MyExportAMeshDat.bl_idname, text="Export A Mesh .dat");
+    #self.layout.operator(MyExportAMeshPNG.bl_idname, text="Export A Mesh .png");
 
 def register():
-  bpy.utils.register_module(__name__);
-  bpy.types.INFO_MT_file_export.append(menu_func);
+    bpy.utils.register_module(__name__);
+    bpy.types.INFO_MT_file_export.append(menu_func);
 
 def unregister():
-  bpy.utils.unregister_module(__name__);
-  bpy.types.INFO_MT_file_export.remove(menu_func);
+    bpy.utils.unregister_module(__name__);
+    bpy.types.INFO_MT_file_export.remove(menu_func);
 
 if __name__ == "__main__":
-  register()
+    register()
 
 ###########################################
 

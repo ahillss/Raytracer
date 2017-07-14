@@ -340,7 +340,7 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 nor=normalize(fromBarycentric(bc.x,bc.y,ns[0],ns[1],ns[2]));
     vec3 mCol=vec3(1.0);//=fromBarycentric(bc.x,bc.y,cs[0],cs[1],cs[2]);
     vec2 tc=fromBarycentric(bc.x,bc.y,tcs[0],tcs[1],tcs[2]);
-    vec4 tng=fromBarycentric(bc.x,bc.y,tangs[0],tangs[1],tangs[2]);
+    /*vec4 tng=fromBarycentric(bc.x,bc.y,tangs[0],tangs[1],tangs[2]);
     tng.xyz=normalize(tng.xyz);
     
     vec3 bnor = normalize(tng.w * cross(nor, tng.xyz));
@@ -348,13 +348,12 @@ vec3 render(vec3 ro,vec3 rd) {
     mat3 tbnMat=mat3(tng.x,bnor.x,nor.x,tng.y,bnor.y,nor.y,tng.z,bnor.z,nor.z);
     mat3 tbnInvMat = mat3(tng.xyz, bnor, nor);
         
-    uint texLoc0=read1u(mtrl+1u+0u);
     uint texLoc1=read1u(mtrl+1u+2u);
     
     if(texLoc1!=0u) {
         uvec2 texSize1=uint_to_uvec2(read1u(texLoc1)); 
         
-        vec2 bump=vec2(0.01,-0.008);//scale,bias
+        vec2 bump=vec2(0.04,-0.03);//scale,bias
        // vec2 bump=vec2(0.01,-0.005);//scale,bias
         
         vec2 viewTS=normalize(tbnMat*-rd).xy;
@@ -378,8 +377,10 @@ vec3 render(vec3 ro,vec3 rd) {
         //mCol*=norHgt.a;
        // mCol=norHgt.rgb;//nor*0.5+0.5;
 
-    }
+    }*/
 
+    uint texLoc0=read1u(mtrl+1u+0u);
+    
     if(texLoc0!=0u) {
         uvec2 texSize0=uint_to_uvec2(read1u(texLoc0));
         if(useLinearFiltering) {

@@ -76,8 +76,8 @@ function onAnimate() {
     prog.uniform4fv("iMouse",cursor2);
     
     prog.uniform1i("useLinearFiltering",myMenu.linearFiltering);
-    prog.uniform1i("useBumpMapping",myMenu.bumpMapping);
-    prog.uniform1i("useNormalMapping",myMenu.normalMapping);
+    //prog.uniform1i("useBumpMapping",myMenu.bumpMapping);
+    //prog.uniform1i("useNormalMapping",myMenu.normalMapping);
 
     screenGeom.draw(width,height);
 
@@ -141,8 +141,8 @@ window.onload=(function() {
  
   var gui = new dat.GUI();
   gui.add(myMenu, 'linearFiltering');
-  gui.add(myMenu, 'bumpMapping');
-  gui.add(myMenu, 'normalMapping');
+  //gui.add(myMenu, 'bumpMapping');
+  //gui.add(myMenu, 'normalMapping');
   
     if(!gl) {
         return;
