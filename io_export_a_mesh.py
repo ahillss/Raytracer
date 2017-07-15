@@ -339,64 +339,12 @@ class MyExportAMeshPNG(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     useSelected=bpy.props.BoolProperty(name="selected",default=False)
 
     def execute(self, context):
-        runExporter(png_open_for_write2,self.filepath,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useMaterials,self.useTextures,self.useTransform,self.useSelected)
+        runExporter(png_open_for_write,self.filepath,self.useNormals,self.useTexcoords,self.useTangents,self.useColors,self.useMaterials,self.useTextures,self.useTransform,self.useSelected)
         return {'FINISHED'};
-
-        
-##########################################
-def lzma_open_for_write(fn):
-    return lzma.open(fn,"wb",format=lzma.FORMAT_ALONE)
-
-def next_greater_power_of_2(x):
-    return 2**(x-1).bit_length()
-    
-def png_open_for_write2(fn):
-    return png_open_for_write(fn)
-    
-class png_open_for_write():
-    def __init__(self, fn):
-        self.fn = fn
-        self.pixels=[]
-
-    def __enter__(self):
-        return self
-        
-    def __exit__(self, type, value, traceback):
-        paddedPixelsNum=next_greater_power_of_2(len(self.pixels)//4)
-        self.pixels.extend([0.0]*4*paddedPixelsNum)
-        
-        pixelsWidth=1
-        pixelsHeight=1
-        
-        while len(self.pixels)//4>pixelsWidth*pixelsHeight:
-            if pixelsWidth<=pixelsHeight:
-                pixelsWidth*=2
-            else:
-                pixelsHeight*=2
-        
-        image = bpy.data.images.new("untitled",width=pixelsWidth,height=pixelsHeight,alpha=True)
-        image.pixels = self.pixels
-        image.filepath_raw = self.fn
-        image.file_format = 'PNG'
-
-        try:
-            image.save()
-        except Exception as error:
-            raise error
-        finally:
-            bpy.data.images.remove(image)
-            
-    def write(self,data):
-        self.pixels.extend([x/255.0 for x in bytearray(data)])
-        
-    def tell(self):
-        return len(self.pixels)
-    
-##########################################
 
 def menu_func(self, context):
     self.layout.operator(MyExportAMeshDat.bl_idname, text="Export A Mesh .dat");
-    #self.layout.operator(MyExportAMeshPNG.bl_idname, text="Export A Mesh .png");
+    self.layout.operator(MyExportAMeshPNG.bl_idname, text="Export A Mesh .png");
 
 def register():
     bpy.utils.register_module(__name__);
@@ -1118,3 +1066,50 @@ def half_float_compress(float32):
         f16 = sign
 
     return f16
+
+##########################################
+
+def lzma_open_for_write(fn):
+    return lzma.open(fn,"wb",format=lzma.FORMAT_ALONE)
+
+def next_greater_power_of_2(x):
+    return 2**(x-1).bit_length()
+
+class png_open_for_write():
+    def __init__(self, fn):
+        self.fn = fn
+        self.pixels=[]
+
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, type, value, traceback):
+        paddedPixelsNum=next_greater_power_of_2(len(self.pixels)//4)
+        self.pixels.extend([0,0,0,255]*paddedPixelsNum)
+        
+        pixelsWidth=1
+        pixelsHeight=1
+        
+        while paddedPixelsNum!=pixelsWidth*pixelsHeight:
+            if pixelsWidth<=pixelsHeight:
+                pixelsWidth*=2
+            else:
+                pixelsHeight*=2
+
+        image = bpy.data.images.new("untitled",width=pixelsWidth,height=pixelsHeight,alpha=True)
+        image.pixels = self.pixels
+        image.filepath_raw = self.fn
+        image.file_format = 'PNG'
+
+        try:
+            image.save()
+        except Exception as error:
+            raise error
+        finally:
+            bpy.data.images.remove(image)
+            
+    def write(self,data):
+        self.pixels.extend([x/255.0 for x in bytearray(data)])
+        
+    def tell(self):
+        return len(self.pixels)

@@ -399,8 +399,8 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 pt=ro+rd*t;
     vec3 eyeDir=normalize(ro-pt);
 
-    vec3 lightPos2=vec3(cos(iGlobalTime*0.1)*sin(iGlobalTime*0.1)*1.0,-1.0,-5.0+sin(iGlobalTime*0.5)*12.0);
-    //vec3 lightPos2=lightPos+vec3(cos(iGlobalTime*0.25),0.0,sin(iGlobalTime*0.25))*2.0;
+    vec3 lightPos2=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,-1.0,-5.0+sin(iTime*0.5)*12.0);
+    //vec3 lightPos2=lightPos+vec3(cos(iTime*0.25),0.0,sin(iTime*0.25))*2.0;
     vec3 lightDir=normalize(lightPos2-pt);
     vec3 invLightDir=1.0/lightDir;
     float lightDist=length(lightPos2-pt);

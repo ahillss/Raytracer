@@ -72,7 +72,7 @@ function onAnimate() {
     prog.uniformMatrix3fv("viewRot",false,viewRot);
 
     prog.uniform3f("iResolution",width,height,0);
-    prog.uniform1f("iGlobalTime",t);
+    prog.uniform1f("iTime",t);
     prog.uniform4fv("iMouse",cursor2);
     
     prog.uniform1i("useLinearFiltering",myMenu.linearFiltering);
@@ -149,7 +149,7 @@ window.onload=(function() {
     }
 
     var header="precision highp float;precision highp int;out vec4 outColor;"+
-        "uniform vec3 iResolution;uniform float iGlobalTime;uniform vec4 iMouse;"+
+        "uniform vec3 iResolution;uniform float iTime;uniform vec4 iMouse;"+
         "uniform highp usampler2D iChannel0;";
 
     header+="uniform sampler2D iChannel1;";
