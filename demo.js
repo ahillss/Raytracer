@@ -13,6 +13,10 @@ var MyMenu = function() {
     this.bumpMapping=true;
     this.normalMapping=true;
     this.linearFiltering = false;
+        
+    this.lightPosX=0;
+    this.lightPosY=0;
+    this.lightPosZ=-3;
 };
 
 var myMenu = new MyMenu();;
@@ -70,6 +74,7 @@ function onAnimate() {
 
     prog.uniform3fv("viewPos",viewPos);
     prog.uniformMatrix3fv("viewRot",false,viewRot);
+    prog.uniform3f("lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
 
     prog.uniform3f("iResolution",width,height,0);
     prog.uniform1f("iTime",t);
@@ -143,14 +148,24 @@ window.onload=(function() {
   gui.add(myMenu, 'linearFiltering');
   //gui.add(myMenu, 'bumpMapping');
   //gui.add(myMenu, 'normalMapping');
+  gui.add(myMenu, 'lightPosX', -20, 20).name('lightPosX').step(0.1);;
+  gui.add(myMenu, 'lightPosY', -20, 20).name('lightPosY').step(0.1);;
+  gui.add(myMenu, 'lightPosZ', -20, 20).name('lightPosZ').step(0.1);;
   
     if(!gl) {
         return;
     }
-
+    
+    var useImage=false; //whether to use png or not
+    
     var header="precision highp float;precision highp int;out vec4 outColor;"+
-        "uniform vec3 iResolution;uniform float iTime;uniform vec4 iMouse;"+
-        "uniform highp usampler2D iChannel0;";
+        "uniform vec3 iResolution;uniform float iTime;uniform vec4 iMouse;";
+        
+    if(!useImage) {
+        header+="uniform highp usampler2D iChannel0;";
+    } else {
+        header+="uniform sampler2D iChannel0;";
+    }
 
     header+="uniform sampler2D iChannel1;";
     header+="uniform sampler2D iChannel2;";
@@ -159,6 +174,10 @@ window.onload=(function() {
     header+="uniform bool useLinearFiltering;";
     header+="uniform bool useBumpMapping;";
     header+="uniform bool useNormalMapping;";
+    
+    if(useImage) {
+        header+="\n#define FROM_IMAGE\n";
+    }
 
     var footer="void main(){mainImage(outColor,gl_FragCoord.xy);}";
 
@@ -176,14 +195,25 @@ window.onload=(function() {
 
 
     var resources=[];
-    resources.push(loadBinary("sibenik.dat").then(decompressLZMA));
+
+    if(!useImage) {
+        resources.push(loadBinary("mesh/sibenik.dat").then(decompressLZMA));
+    } else {
+        resources.push(loadImage("mesh/sibenik.png"));
+    }
+    
     resources.push(loadText("demo.glsl"));
 
     Promise.all(resources).then((result)=>{
-        
-        createBind2dTextureData1UI(gl,0,result[0]);
+        if(!useImage) {
+            createBind2dTextureData1UI(gl,0,result[0]);
+        } else {
+            createBind2dTexture(gl,0,result[0],{mipmap:false,mag_filter:"nearest",min_filter:"nearest",wrap_s:"clamp_to_edge",wrap_t:"clamp_to_edge"});
+        }
 
-        if(!prog.set(result[1])) {            return;        }
+        if(!prog.set(result[1])) {
+            return;
+        }
 
         prog.use();
         prog.uniform1i("iChannel0",0);

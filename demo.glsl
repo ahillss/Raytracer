@@ -1,6 +1,4 @@
-//#define TEST
-#define USE_MATERIAL_COLOR
-#define USE_TEXTURES
+
 #define INFINITY 3.402823e+38
 #define STACK_SIZE 32
 
@@ -13,10 +11,18 @@ struct Traverse {
 } stk[STACK_SIZE]; 
 
 uint read1u(uint i) {
+#ifdef FROM_IMAGE
+    uvec2 s=uvec2(textureSize(iChannel0,0));
+    uvec2 uv=uvec2(i%s.x,i/s.x);
+    vec4 tex=texelFetch(iChannel0,ivec2(uv),0);
+    uvec4 bytes=uvec4(tex*255.0).abgr;
+    return (bytes.r<<24)|(bytes.g<<16)|(bytes.b<<8)|bytes.a;
+#else
     uint w=uint(textureSize(iChannel0,0).x);
     uint x=i%w;
     uint y=i/w;
     return texelFetch(iChannel0,ivec2(x,y),0).r;
+#endif
 }
 
 uvec2 read2u(uint i) {
@@ -311,6 +317,12 @@ vec3 render(vec3 ro,vec3 rd) {
     uvec4 tri;
     vec2 bc;
     float t;
+    
+#ifdef SHADRON
+    //some driver bug probably where the next line intersectTree will always fail
+    //maybe something to do with the texture
+    if(false) {}
+#endif
 
     if(!intersectTree(ro,rd,invRd,bmin,bmax,tri,bc,t)) {
         return vec3(0.0);
@@ -392,35 +404,34 @@ vec3 render(vec3 ro,vec3 rd) {
     }
     
     mCol*=mtrlCol.rgb;
-#ifdef TEST
-    return mCol;
-    //return nor*0.5+0.5;
-#else
+
     vec3 pt=ro+rd*t;
     vec3 eyeDir=normalize(ro-pt);
 
-    vec3 lightPos2=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,-1.0,-5.0+sin(iTime*0.5)*12.0);
-    //vec3 lightPos2=lightPos+vec3(cos(iTime*0.25),0.0,sin(iTime*0.25))*2.0;
-    vec3 lightDir=normalize(lightPos2-pt);
+    #ifndef SHADRON
+    //vec3 lightPos=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,-1.0,-5.0+sin(iTime*0.5)*12.0);
+    #endif
+    
+    //vec3 lightPos=lightPos+vec3(cos(iTime*0.25),0.0,sin(iTime*0.25))*2.0;
+    vec3 lightDir=normalize(lightPos-pt);
     vec3 invLightDir=1.0/lightDir;
-    float lightDist=length(lightPos2-pt);
+    float lightDist=length(lightPos-pt);
 
     //return dirLight(nor,eyeDir,rd,mCol,vec3(1.0),0.1, 0.1);
     vec3 c= vec3(0.0);
 
 
-    if(!intersectTreeP(lightPos2,-lightDir,-invLightDir,bmin,bmax,lightDist-1e-4)) {
-        c=calcPtLightCol(pt,nor,lightPos2,vec3(1.0,0.01,0.001),mCol,vec3(1.0),0.2, 0.2);
+    if(!intersectTreeP(lightPos,-lightDir,-invLightDir,bmin,bmax,lightDist-1e-4)) {
+        c=calcPtLightCol(pt,nor,lightPos,vec3(1.0,0.01,0.001),mCol,vec3(1.0),0.2, 0.2);
     } else {
        c=mCol*0.1;
     }
 
-    if(t>=length(lightPos2-ro)) {
-        c=mix(c,vec3(3.0),calcFlare(ro,rd,lightPos2,0.05));
+    if(t>=length(lightPos-ro)) {
+        c=mix(c,vec3(3.0),calcFlare(ro,rd,lightPos,0.05));
     }
 
     return min(c,1.0);
-#endif
 }
 
 mat3 lookRot(float yaw,float pitch) {
@@ -438,19 +449,23 @@ mat3 orbitRot(float yaw,float pitch) {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float fovy=0.7854;
     float aspect=iResolution.x/iResolution.y;
-    vec2 ms=(iMouse.xy==vec2(0.0))?vec2(0.0):(iMouse.xy/iResolution.xy)*2.0-1.0;
+    //vec2 ms=(iMouse.xy==vec2(0.0))?vec2(0.0):(iMouse.xy/iResolution.xy)*2.0-1.0;
 
-#ifndef TEST
+    #ifdef SHADRON
+    //vec3 viewPos=vec3(0.0);
+    mat3 viewRot=lookRot(viewYaw,viewPitch);//mat3(1.0);
+    #endif
     //mat3 viewRot=lookRot(ms.x*-4.0+3.14,ms.y*1.7);
     //vec3 ro=vec3(2.0,2.0,-3.0);
     //vec3 ro=vec3(1.0,3.0,1.0);
     vec3 ro=viewPos;
-#else
-    mat3 viewRot=orbitRot(ms.x*2.0,ms.y*2.0);
-    vec3 ro=viewRot*vec3(0.0,0.0,10.0);
-#endif
 
-    vec2 scr=(fragCoord/iResolution.xy)*2.0-1.0;
+    //mat3 viewRot=orbitRot(ms.x*2.0,ms.y*2.0);
+    //vec3 ro=viewRot*vec3(0.0,0.0,10.0);
+
+
+    vec2 uv=fragCoord/iResolution.xy;
+    vec2 scr=uv*2.0-1.0;
     vec3 primary=normalize(vec3(scr.x*aspect,scr.y,-1.0/tan(fovy/2.0)));
     vec3 rd=normalize(viewRot*primary);
 

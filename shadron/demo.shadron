@@ -1,0 +1,22 @@
+image iChannel0 = input() : filter(nearest),map(clamp);//,hidden(true);
+
+#version 420
+#define iResolution vec3(vec2(shadron_Dimensions), 1.0)
+#define iTime shadron_Time
+//parameter float iTime = 0.0 : range(0.0, 2050.0);
+parameter bool useLinearFiltering = false;
+
+
+#define SHADRON
+#define FROM_IMAGE
+glsl {
+#include "demo.glsl"
+}
+
+glsl vec4 mainImage_adapter(vec2 pos) {
+	vec4 color = vec4(0.0);
+	mainImage(color, vec2(shadron_Dimensions)*pos);
+	return color;
+}
+
+animation MyAnimation = glsl(mainImage_adapter, 800, 600) : resizable(true);
