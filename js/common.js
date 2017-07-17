@@ -529,19 +529,22 @@ function createBind2dTexture1UI(gl,loc,data,w,h) {
 
 
 function createBind2dTextureData1UI(gl,loc,data) {
-    var maxTexSize=gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    
-    var mesh=new Uint32Array(data);
-    var paddedMesh=new Uint32Array(next_greater_power_of_2(mesh.length)); //pow2 padded
-    paddedMesh.set(mesh);
+    //return new Promise(function(resolve, reject) {
+        var maxTexSize=gl.getParameter(gl.MAX_TEXTURE_SIZE);
+        
+        var mesh=new Uint32Array(data);
+        var paddedMesh=new Uint32Array(next_greater_power_of_2(mesh.length)); //pow2 padded
+        paddedMesh.set(mesh);
 
-    var meshTexWidth=Math.min(maxTexSize,paddedMesh.length);
-    var meshTexHeight=paddedMesh.length/meshTexWidth;
+        var meshTexWidth=Math.min(maxTexSize,paddedMesh.length);
+        var meshTexHeight=paddedMesh.length/meshTexWidth;
 
-    var tex=createBind2dTexture1UI(gl,loc,paddedMesh,meshTexWidth,meshTexHeight);
-    console.log(mesh.length+":"+paddedMesh.length+":"+meshTexWidth +"x"+meshTexHeight);
+        var tex=createBind2dTexture1UI(gl,loc,paddedMesh,meshTexWidth,meshTexHeight);
+        console.log(mesh.length+":"+paddedMesh.length+":"+meshTexWidth +"x"+meshTexHeight);
 
-    return tex;
+        //resolve(tex);
+        return tex;
+    //});
 }
 
 function createBind2dTexture(gl,loc,img,params) {

@@ -14,6 +14,8 @@ parameter vec3 lightPos = vec3(0.0) : range(vec3(-50.0),vec3(50.0));;
 #define SHADRON
 #define FROM_IMAGE
 glsl {
+precision highp float;
+precision highp int;
 #include "demo.glsl"
 }
 

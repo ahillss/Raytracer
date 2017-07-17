@@ -32,3 +32,8 @@ canvas {
 pre {
     white-space: pre-wrap;
 }
+
+#log {
+    font-family: "Courier New";
+    font-size: 10pt;
+}
