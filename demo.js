@@ -128,7 +128,7 @@ function registerInputEvents(element) {
         window.addEventListener("mouseup",function(event){
             if(event.button==0&&lmb){
                 lmb=false;
-                PL.exitPointerLock(element);
+                PL.exitPointerLock();
             }
         });
     })();

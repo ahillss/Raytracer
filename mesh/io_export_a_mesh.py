@@ -9,6 +9,9 @@ triangle(vertexIndices[3],material)
 vertex(px,py,pz,normal,texcoords[uvLayers],tangents[uvLayers],colors[colLayers])
 material(color,(textureIndex,uvIndex)[])
 texture(width/height,data[])
+
+todo:
+* add mipmaps for textures
 """
 
 bl_info = {

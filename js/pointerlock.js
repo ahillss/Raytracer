@@ -116,8 +116,7 @@
     return true;
   }
 
-  function exitPointerLock(element) {
-    element = element || document.body;
+  function exitPointerLock() {
 
     if (!isPointerLockSupported) {
       if (window.console && console.error) {
