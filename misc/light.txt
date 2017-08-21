@@ -1,0 +1,14 @@
+
+I = E × (D / (D + L × r))
+I = E × (D / (D + L × r)) × (D^2 / (D^2 + Q × r^2))
+Where
+I is the calculated Intensity of light.
+E is the current Energy slider setting.
+D is the current setting of the Dist field.
+L is the current setting of the Linear slider.
+Q is the current setting of the Quad slider.
+r is the distance from the lamp where the light intensity gets measured.
+
+Inverse Square: Linear to 0.0 and Quad to 1.0),
+
+Inverse Linear: Linear to 1.0 and Quad to 0.0. 

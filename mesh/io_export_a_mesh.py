@@ -1,15 +1,22 @@
 """
 overall data layout:
-nodes|primitives|triangles|vertices|materials|textures
+minBounds|maxBounds|camerasStart|camerasNum|lightsStart|lightsNum|nodes|primitives|triangles|vertices|materials|textures|cameras|lights
 
 individual data layout:
-node(type/right/primtiveIndex/triangle,split/primitiveNum)
+minBounds(x,y,z)
+maxBounds(x,y,z)
+node(type|right/primtiveIndex/triangle,split/primitiveNum)
 primitive(triangleIndices[primitiveNum])
 triangle(vertexIndices[3],material)
 vertex(px,py,pz,normal,texcoords[uvLayers],tangents[uvLayers],colors[colLayers])
 material(color,(textureIndex,uvIndex)[])
-texture(width/height,data[])
+texture(width(2b)|height(2b),data[])
+camera(framesNum,cameraFrames[])
+cameraFrame(px,py,pz,rx|ry,rz|rw)
+pointLight(framesNum,lightFrames[])
+lightFrame(px,py,pz,col,energy(2b)|linear(1b)|quad(1b),spot_size(2b)|spot_blend(2b),rx(2b)|ry(2b),rz(2b)|rw(2b))
 
+0-180, 0.0-1.0
 todo:
 * add mipmaps for textures
 """
@@ -36,6 +43,18 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
 
     #
     mes=do_meshes(useSelected,useNormals,useTexcoords,useTangents,useColors,useTransform,useMaterials,useTextures)
+    
+    #test
+    for n,a in mes["animations"].items():
+        print("{} : {}".format(n,a["type"]))
+            
+        for v in a["keyframes"]:
+            print("\t{}:".format(v["frame"]))
+            
+            for a,b in v.items():
+                if a!="frame":
+                    print("\t\t{} = {}".format(a,b))
+                
 
     #    
     mtrl_inds=dict([(n,i) for i,n in enumerate(mes["material_names"])])
@@ -527,7 +546,9 @@ def edgeCompare(a,b):
 def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTransform, useMaterials,useTextures):
     all=not (useSelected and bpy.context.selected_objects)
     objects=bpy.data.objects if all else bpy.context.selected_objects
-    objects2=[ob for ob in objects if ob.type == "MESH"]
+    msh_objects=[ob for ob in objects if ob.type == "MESH"]
+    lamp_objects=[ob for ob in objects if ob.type == "LAMP"]
+    camera_objects=[ob for ob in objects if ob.type == "CAMERA"]
 
     #rotY(-pi/2)*rotX(-pi/2)=[0,0,-1, 0,1,0, 1,0,0]*[1,0,0, 0,0,1, 0,-1,0]=[0,1,0, 0,0,1, 1,0,0]
 
@@ -537,22 +558,22 @@ def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTr
     vertsCount=0
     indsCount=0
 
-    uvLayers=sorted(list(set([x.name for ob in objects2 for x in ob.data.uv_textures])))
-    colLayers=sorted(list(set([x.name for ob in objects2 for x in ob.data.vertex_colors])))
+    uvLayers=sorted(list(set([x.name for ob in msh_objects for x in ob.data.uv_textures])))
+    colLayers=sorted(list(set([x.name for ob in msh_objects for x in ob.data.vertex_colors])))
     
     indsByMat={}
 
     out={"positions" : [],
          "normals" : [],
-         "texcoords" : dict([(x.name,[]) for ob in objects2 for x in ob.data.uv_textures]) if useTexcoords and len(uvLayers)>0 else {},
-         "tangents" : dict([(x.name,[]) for ob in objects2 for x in ob.data.uv_textures]) if useTangents and len(uvLayers)>0 else {},
-         "colors" : dict([(x.name,[]) for ob in objects2 for x in ob.data.vertex_colors]) if useColors and len(colLayers)>0 else {},
+         "texcoords" : dict([(x.name,[]) for ob in msh_objects for x in ob.data.uv_textures]) if useTexcoords and len(uvLayers)>0 else {},
+         "tangents" : dict([(x.name,[]) for ob in msh_objects for x in ob.data.uv_textures]) if useTangents and len(uvLayers)>0 else {},
+         "colors" : dict([(x.name,[]) for ob in msh_objects for x in ob.data.vertex_colors]) if useColors and len(colLayers)>0 else {},
          "indices" : [],
          "materials" : {}
         }
 
     #get object meshes
-    for ob in objects2:
+    for ob in msh_objects:
         worldMat=fixModelMat*ob.matrix_world if useTransform else fixModelMat
         normalMat=fixNormalMat*ob.matrix_world.to_quaternion().to_matrix() if useTransform else fixNormalMat
 
@@ -677,10 +698,137 @@ def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTr
             "intensity":intensity,
             "textures":texs}
     
-
     #
+    animationsOut={}
+    out["animations"]=animationsOut
+    
+    #lights
+    #distance,color,energy,linear_attenuation(0, 1),quadratic_attenuation(0, 1)
+    #spot_blend(0, 1), spot_size(0.0174533, 3.14159)
+    #type POINT SPOT
+    
+    
+    
+    for ob in lamp_objects:
+        lamp=ob.data
+                
+        rawKeyFrames={}
+        
+        if ob.animation_data and ob.animation_data.action:
+            action=ob.animation_data.action
+            
+            for fcurve in action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    addRawKeyFrame(rawKeyFrames,kf.co[0],fcurve.data_path,fcurve.array_index,kf.co[1]) 
+
+        if lamp.animation_data and lamp.animation_data.action:
+            action=lamp.animation_data.action
+            
+            for fcurve in action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    addRawKeyFrame(rawKeyFrames,kf.co[0],fcurve.data_path,fcurve.array_index,kf.co[1])
+             
+        keyFrames=[]
+        
+        if len(rawKeyFrames)==0:
+            loc=ob.location
+            rot=mathutils.Euler(ob.rotation_euler[0:3], 'YZX').to_quaternion()
+
+            keyFrames.append({
+                "frame":0,
+                "location":[loc[1],loc[2],loc[0]],
+                "rotation":[rot.x,rot.y,rot.z,rot.w],
+                "color":lamp.color[0:3],
+                "energy":lamp.energy,
+                "distance":lamp.distance,
+                "linear_attenuation":lamp.linear_attenuation,
+                "quadratic_attenuation":lamp.quadratic_attenuation,
+                "spot_blend":lamp.spot_blend if lamp.type=="SPOT" else 0,
+                "spot_size":lamp.spot_size if lamp.type=="SPOT" else 0            
+            })
+        
+        for v in rawKeyFrames.values():
+            loc=v.get("location",ob.location)
+            rot=mathutils.Euler(v.get("rotation_euler",ob.rotation_euler[0:3]), 'YZX').to_quaternion()
+
+            keyFrames.append({
+                "frame":v["frame"],
+                "location":[loc[1],loc[2],loc[0]],
+                "rotation":[rot.x,rot.y,rot.z,rot.w],
+                "color":v.get("color",lamp.color)[0:3],
+                "energy":v.get("energy",[lamp.energy])[0],
+                "distance":v.get("distance",[lamp.distance])[0],
+                "linear_attenuation":v.get("linear_attenuation",[lamp.linear_attenuation])[0],
+                "quadratic_attenuation":v.get("quadratic_attenuation",[lamp.quadratic_attenuation])[0],
+                "spot_blend":v.get("spot_blend",[lamp.spot_blend])[0] if lamp.type=="SPOT" else 0,
+                "spot_size":v.get("spot_size",[lamp.spot_size])[0] if lamp.type=="SPOT" else 0
+            
+            })
+
+        keyFrames.sort(key=functools.cmp_to_key(lambda x, y : ((x["frame"]>y["frame"])-(x["frame"]<y["frame"]))))
+                
+        animationsOut[ob.name]={"type":lamp.type,"keyframes":keyFrames}
+   
+    #cameras 
+    for ob in camera_objects:
+                
+        rawKeyFrames={}
+        
+        if ob.animation_data and ob.animation_data.action:
+            action=ob.animation_data.action
+            
+            for fcurve in action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    addRawKeyFrame(rawKeyFrames,kf.co[0],fcurve.data_path,fcurve.array_index,kf.co[1]) 
+
+        keyFrames=[]
+        
+        if len(rawKeyFrames)==0:
+            loc=ob.location
+            rot=mathutils.Euler(ob.rotation_euler[0:3], 'YZX').to_quaternion()
+
+            keyFrames.append({
+                "frame":0,
+                "location":[loc[1],loc[2],loc[0]],
+                "rotation":[rot.x,rot.y,rot.z,rot.w]
+            })
+        
+        for v in rawKeyFrames.values():
+            loc=v.get("location",ob.location)
+            rot=mathutils.Euler(v.get("rotation_euler",ob.rotation_euler[0:3]), 'YZX').to_quaternion()
+
+            keyFrames.append({
+                "frame":v["frame"],
+                "location":[loc[1],loc[2],loc[0]],
+                "rotation":[rot.x,rot.y,rot.z,rot.w]            
+            })
+
+        keyFrames.sort(key=functools.cmp_to_key(lambda x, y : ((x["frame"]>y["frame"])-(x["frame"]<y["frame"]))))
+        
+        animationsOut[ob.name]={"type":"CAMERA","keyframes":keyFrames}
+                
+        
 
     return out
+
+def addRawKeyFrame(kfs,frame,name,ind,val):
+    key=str(frame)
+    
+    if key not in kfs.keys():
+        kfs[key]={"frame":frame}
+        
+    kf=kfs[key]
+    
+    if name not in kf.keys():
+        kf[name]=[]
+        
+    data=kf[name]
+        
+    if ind>= len(data):
+        data.extend([0]*(ind+1))
+        
+    data[ind]=val
+    
 
 def do_mesh(me,modelMat,normalMat,useNormals,useTexcoords, useTangents,useColors):
 
