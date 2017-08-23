@@ -8,7 +8,7 @@ parameter bool useLinearFiltering = false;
 parameter vec3 viewPos = vec3(0.0) : range(vec3(-50.0),vec3(50.0));
 parameter float viewYaw = 0.0 : range(-3.14,3.14);
 parameter float viewPitch = 0.0 : range(-1.7,1.7);
-parameter vec3 lightPos = vec3(0.0) : range(vec3(-50.0),vec3(50.0));;
+parameter vec3 lightPos = vec3(0.0,0.0,-6.0) : range(vec3(-50.0),vec3(50.0));;
 
 
 #define SHADRON

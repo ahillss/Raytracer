@@ -2,8 +2,9 @@
 #define INFINITY 3.402823e+38
 #define STACK_SIZE 32
 
-
-#define NODE_START 6u
+#define FRAME_LOC 6u
+#define BOUND_LOC (FRAME_LOC+2u)
+#define NODE_LOC (BOUND_LOC+6u)
 
 struct Traverse {
     uint node;
@@ -181,7 +182,7 @@ bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
         return false;
     }
 
-    stk[0].node=NODE_START;
+    stk[0].node=NODE_LOC;
     stk[0].tmin=tmin;
     stk[0].tmax=tmax;
 
@@ -225,7 +226,7 @@ bool intersectTreeP(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,float rayMax) {
         return false;
     }
 
-    stk[0].node=NODE_START;
+    stk[0].node=NODE_LOC;
     stk[0].tmin=tmin;
     stk[0].tmax=tmax;
 
@@ -302,8 +303,8 @@ vec4 sampleLinear(vec2 TexCoord,uint texStart,uvec2 texSize) {
 
 vec3 render(vec3 ro,vec3 rd) {
     vec3 invRd=1.0/rd;
-    vec3 bmin=uintBitsToFloat(read3u(0u));
-    vec3 bmax=uintBitsToFloat(read3u(3u));
+    vec3 bmin=uintBitsToFloat(read3u(BOUND_LOC+0u));
+    vec3 bmax=uintBitsToFloat(read3u(BOUND_LOC+3u));
 
     uvec4 tri;
     vec2 bc;

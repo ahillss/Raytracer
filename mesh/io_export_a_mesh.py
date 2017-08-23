@@ -1,22 +1,27 @@
 """
 overall data layout:
-minBounds|maxBounds|camerasStart|camerasNum|lightsStart|lightsNum|nodes|primitives|triangles|vertices|materials|textures|cameras|lights
+
+camerasStart|camerasNum|pointLightsStart|pointLightsNum|spotLightsStart|spotLightsNum|framesStart|framesEnd|minBounds|maxBounds|nodes|primitives|triangles|vertices|materials|textures|cameras|cameraFrames|pointLights|pointLightFrames|spotLights|spotLightFrames
 
 individual data layout:
-minBounds(x,y,z)
-maxBounds(x,y,z)
-node(type|right/primtiveIndex/triangle,split/primitiveNum)
-primitive(triangleIndices[primitiveNum])
-triangle(vertexIndices[3],material)
-vertex(px,py,pz,normal,texcoords[uvLayers],tangents[uvLayers],colors[colLayers])
-material(color,(textureIndex,uvIndex)[])
-texture(width(2b)|height(2b),data[])
-camera(framesNum,cameraFrames[])
-cameraFrame(px,py,pz,rx|ry,rz|rw)
-pointLight(framesNum,lightFrames[])
-lightFrame(px,py,pz,col,energy(2b)|linear(1b)|quad(1b),spot_size(2b)|spot_blend(2b),rx(2b)|ry(2b),rz(2b)|rw(2b))
+minBounds(x(32b),y(32b),z(32b))
+maxBounds(x(32b),y(32b),z(32b))
+node((right(30b)/primitiveNum(30b)/triangle(30b))|type(2b),split(32b)/primtiveIndex(32b))
+primitive(triangleIndices(32b)[primitiveNum])
+triangle(vertexIndices(32b)[3],material(32b))
+vertex(px(32b),py(32b),pz(32b),normal(32b),texcoords(16b,16b)[uvLayers],tangents(4b,4b,4b,4b)[uvLayers],colors(4b,4b,4b,4b)[colLayers])
+material(color(32b),(textureIndex(32b),uvIndex(32b))[])
+texture(width(2b)|height(2b),data(32b)[])
 
-0-180, 0.0-1.0
+camera(cameraFramesStart(32b),cameraFramesNum(32b))
+cameraFrame(frame(32b),px(32b),py(32b),pz(32b),rx(32b),ry(32b),rz(32b),rw(32b))
+
+pointLight(pointLightFramesStart(32b),pointLightFramesNum(32b))
+pointLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(16b)|quadratic_attenuation(16b),px(32b),py(32b),pz(32b))
+
+spotLight(spotLightFramesStart(32b),spotLightFramesNum(32b))
+spotLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(16b)|quadratic_attenuation(16b),px(32b),py(32b),pz(32b),rx(32b),ry(32b),rz(32b),rw(32b),spot_blend(16b)|spot_size(16b))
+
 todo:
 * add mipmaps for textures
 """
@@ -44,7 +49,20 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
     #
     mes=do_meshes(useSelected,useNormals,useTexcoords,useTangents,useColors,useTransform,useMaterials,useTextures)
     
+    #
+    cameras=[x for x in mes["animations"].values() if x["type"]=="CAMERA"]
+    pointLights=[x for x in mes["animations"].values() if x["type"]=="POINT"]
+    spotLights=[x for x in mes["animations"].values() if x["type"]=="SPOT"]
+    
+    #
+    camerasNum=len(cameras)
+    pointLightsNum=len(pointLights)
+    spotLightsNum=len(spotLights)
+    
     #test
+
+    print("{} => {}".format(mes["animations_start"],mes["animations_end"]))
+    
     for n,a in mes["animations"].items():
         print("{} : {}".format(n,a["type"]))
             
@@ -133,7 +151,7 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
         outMtrls.append(outMtrl)
                 
     #offsets
-    outNodesOffset=6
+    outNodesOffset=2+2+2+2+6
     outNodeSizeOffset=2;
     outPrimsOffset=outNodesOffset+len(outNodeList)*outNodeSizeOffset
     outTrisOffset=outPrimsOffset+outPrimIndsTotalNum
@@ -172,21 +190,41 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
             tri[3]+=outMtrlOffset
 
     outImgOffset=outMtrlOffset+(len(mes["materials"])*outMtrlSizeOffset if useMaterials else 0)
-
-    endOffset=outImgOffset
+    
+    outImgEndOffset=outImgOffset
     
     imageOffsets=[]
     
     if useTextures:
         for img in imgs:
-            imageOffsets.append(endOffset)
-            endOffset+=1+len(img.pixels)//4
+            imageOffsets.append(outImgEndOffset)
+            outImgEndOffset+=1+len(img.pixels)//4
 
         for outMtrl in outMtrls:
             for tex in outMtrl["texs"]:
                 if tex!=None:
                     tex[0]=imageOffsets[tex[0]]
    
+    #
+    outCamerasOffset=outImgOffset
+    outCamerasFramesOffset=outCamerasOffset+camerasNum*2
+    outCameraFrameSizeOffset=8
+    outCamerasFramesEndOffset=outCamerasFramesOffset+sum([outCameraFrameSizeOffset*len(x["keyframes"]) for x in cameras])
+    
+    outPointLightsOffset=outCamerasFramesEndOffset
+    outPointLightsFramesOffset=outPointLightsOffset+pointLightsNum*2
+    outPointLightFrameSizeOffset=8
+    outPointLightFramesEndOffset=outPointLightsFramesOffset+sum([outPointLightFrameSizeOffset*len(x["keyframes"]) for x in pointLights])
+    
+    outSpotLightsOffset=outPointLightFramesEndOffset+spotLightsNum*2
+    outSpotLightsFramesOffset=outSpotLightsOffset
+    outSpotLightFrameSizeOffset=13
+    outSpotLightFramesEndOffset=outSpotLightsFramesOffset+sum([outSpotLightFrameSizeOffset*len(x["keyframes"]) for x in spotLights])
+    
+    #
+    outEndOffset=outSpotLightFramesEndOffset
+    
+    #
     for n in outNodeList:
         n["index"]*=outNodeSizeOffset
         n["index"]+=outNodesOffset
@@ -212,7 +250,7 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
             outTris[i][j]+=outVertsOffset
 
     #
-    print("offsets {} {} {} {} {} {} {}".format(outNodesOffset,outPrimsOffset,outTrisOffset,outVertsOffset,outMtrlOffset,outImgOffset,endOffset))
+    print("offsets {} {} {} {} {} {} {} {} {} {} {} {} {} {}".format(outNodesOffset,outPrimsOffset,outTrisOffset,outVertsOffset,outMtrlOffset,outImgOffset,outImgEndOffset,outCamerasOffset,outCamerasFramesOffset,outPointLightsOffset,outPointLightsFramesOffset,outSpotLightsOffset,outSpotLightsFramesOffset,outEndOffset))
 
     #
     print("nodes = {}".format(len(outNodeList)))
@@ -223,17 +261,25 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
     print("writing file...")
 
     #
-    #with lzma.open(filepath,"wb",format=lzma.FORMAT_ALONE) as fh:
-    #with lzma_open_for_write(filepath) as fh:
     with theWriter(filepath) as fh:
-    
+        #write cameras start, num
+        fh.write(struct.pack('2I',outCamerasOffset,camerasNum))
+        
+        #write point lights start, num
+        fh.write(struct.pack('2I',outPointLightsOffset,pointLightsNum))
+        
+        #write spot lights start, num
+        fh.write(struct.pack('2I',outSpotLightsOffset,spotLightsNum))
+                
+        #write frames start, end
+        fh.write(struct.pack('2f',mes["animations_start"],mes["animations_end"]))
+        
         #write min bound
         fh.write(struct.pack('3f',*kdtree["min"]))
-        #fh.write(struct.pack('3f',0.1,0.1,0.9))
 
         #write max bound
         fh.write(struct.pack('3f',*kdtree["max"]))
-
+        
         #
         print("file node offset = {}".format(fh.tell()/4))
 
@@ -313,12 +359,47 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
         #
         print("file image offset = {}".format(fh.tell()/4))
         
-        #
+        #write textures
         if useTextures:
             for img in imgs:
                 fh.write(struct.pack('2H',img.size[0],img.size[1]))
                 fh.write(bytes([int(p*255) for p in img.pixels]))
+        
+        #
+        print("file camera offset = {}".format(fh.tell()/4))
+        
+        #write cameras
+        #...
+        
+        #
+        print("file camera frames offset = {}".format(fh.tell()/4))
+        
+        #write cameras frames
+        #...
+        
+        #
+        print("file point lights offset = {}".format(fh.tell()/4))
+        
+        #write point lights
+        #...
+        
+        #
+        print("file point lights frames offset = {}".format(fh.tell()/4))
+        
+        #write point lights frames
+        #...
                 
+        #
+        print("file spot lights offset = {}".format(fh.tell()/4))
+        
+        #write spot lights
+        #...
+        
+        #
+        print("file spot lights frames offset = {}".format(fh.tell()/4))
+        
+        #write spot lights frames
+        #...               
         
         #
         print("file end offset = {}".format(fh.tell()/4))
@@ -337,7 +418,7 @@ class MyExportAMeshDat(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     useTexcoords=bpy.props.BoolProperty(name="texcoords",default=False)
     useTangents=bpy.props.BoolProperty(name="tangents",default=False)
     useColors=bpy.props.BoolProperty(name="colors",default=False)
-    useMaterials=bpy.props.BoolProperty(name="materials",default=False)
+    useMaterials=bpy.props.BoolProperty(name="materials",default=True)
     useTextures=bpy.props.BoolProperty(name="textures",default=False)
     useTransform=bpy.props.BoolProperty(name="transform",default=True)
     useSelected=bpy.props.BoolProperty(name="selected",default=False)
@@ -356,7 +437,7 @@ class MyExportAMeshPNG(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     useTexcoords=bpy.props.BoolProperty(name="texcoords",default=False)
     useTangents=bpy.props.BoolProperty(name="tangents",default=False)
     useColors=bpy.props.BoolProperty(name="colors",default=False)
-    useMaterials=bpy.props.BoolProperty(name="materials",default=False)
+    useMaterials=bpy.props.BoolProperty(name="materials",default=True)
     useTextures=bpy.props.BoolProperty(name="textures",default=False)
     useTransform=bpy.props.BoolProperty(name="transform",default=True)
     useSelected=bpy.props.BoolProperty(name="selected",default=False)
@@ -716,7 +797,7 @@ def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTr
         
         if ob.animation_data and ob.animation_data.action:
             action=ob.animation_data.action
-            
+                        
             for fcurve in action.fcurves:
                 for kf in fcurve.keyframe_points:
                     addRawKeyFrame(rawKeyFrames,kf.co[0],fcurve.data_path,fcurve.array_index,kf.co[1]) 
@@ -808,7 +889,9 @@ def do_meshes(useSelected,useNormals, useTexcoords,useTangents, useColors, useTr
         animationsOut[ob.name]={"type":"CAMERA","keyframes":keyFrames}
                 
         
-
+    out["animations_start"]=bpy.context.scene.frame_start
+    out["animations_end"]=bpy.context.scene.frame_end
+    
     return out
 
 def addRawKeyFrame(kfs,frame,name,ind,val):
