@@ -25,4 +25,4 @@ glsl vec4 mainImage_adapter(vec2 pos) {
 	return color;
 }
 
-animation MyAnimation = glsl(mainImage_adapter, 800, 600) : resizable(true);
+animation MyAnimation = glsl(mainImage_adapter, 800, 400) : resizable(true);

@@ -17,10 +17,10 @@ camera(cameraFramesStart(32b),cameraFramesNum(32b))
 cameraFrame(frame(32b),px(32b),py(32b),pz(32b),rx(32b),ry(32b),rz(32b),rw(32b))
 
 pointLight(pointLightFramesStart(32b),pointLightFramesNum(32b))
-pointLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(16b)|quadratic_attenuation(16b),px(32b),py(32b),pz(32b))
+pointLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(32b),quadratic_attenuation(32b),px(32b),py(32b),pz(32b))
 
 spotLight(spotLightFramesStart(32b),spotLightFramesNum(32b))
-spotLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(16b)|quadratic_attenuation(16b),px(32b),py(32b),pz(32b),rx(32b),ry(32b),rz(32b),rw(32b),spot_blend(16b)|spot_size(16b))
+spotLightFrame(frame(32b),color(32b),energy(32b),distance(32b),linear_attenuation(32b),quadratic_attenuation(32b),px(32b),py(32b),pz(32b),rx(32b),ry(32b),rz(32b),rw(32b),spot_blend(32b),spot_size(32b))
 
 todo:
 * add mipmaps for textures
@@ -206,19 +206,19 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
                     tex[0]=imageOffsets[tex[0]]
    
     #
-    outCamerasOffset=outImgOffset
+    outCamerasOffset=outImgEndOffset
     outCamerasFramesOffset=outCamerasOffset+camerasNum*2
     outCameraFrameSizeOffset=8
     outCamerasFramesEndOffset=outCamerasFramesOffset+sum([outCameraFrameSizeOffset*len(x["keyframes"]) for x in cameras])
     
     outPointLightsOffset=outCamerasFramesEndOffset
     outPointLightsFramesOffset=outPointLightsOffset+pointLightsNum*2
-    outPointLightFrameSizeOffset=8
+    outPointLightFrameSizeOffset=9
     outPointLightFramesEndOffset=outPointLightsFramesOffset+sum([outPointLightFrameSizeOffset*len(x["keyframes"]) for x in pointLights])
-    
+
     outSpotLightsOffset=outPointLightFramesEndOffset+spotLightsNum*2
     outSpotLightsFramesOffset=outSpotLightsOffset
-    outSpotLightFrameSizeOffset=13
+    outSpotLightFrameSizeOffset=15
     outSpotLightFramesEndOffset=outSpotLightsFramesOffset+sum([outSpotLightFrameSizeOffset*len(x["keyframes"]) for x in spotLights])
     
     #
@@ -250,7 +250,23 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
             outTris[i][j]+=outVertsOffset
 
     #
-    print("offsets {} {} {} {} {} {} {} {} {} {} {} {} {} {}".format(outNodesOffset,outPrimsOffset,outTrisOffset,outVertsOffset,outMtrlOffset,outImgOffset,outImgEndOffset,outCamerasOffset,outCamerasFramesOffset,outPointLightsOffset,outPointLightsFramesOffset,outSpotLightsOffset,outSpotLightsFramesOffset,outEndOffset))
+    
+    print("")
+    print("calcd nodes offset {}".format(outNodesOffset))
+    print("calcd prims offset {}".format(outPrimsOffset))
+    print("calcd tris offset {}".format(outTrisOffset))
+    print("calcd verts offset {}".format(outVertsOffset))
+    print("calcd mtrls offset {}".format(outMtrlOffset))
+    print("calcd imgs offset {}".format(outImgOffset))
+    print("calcd cameras offset {}".format(outCamerasOffset))
+    print("calcd cameras frames offset {}".format(outCamerasFramesOffset))
+    print("calcd pointlights offset {}".format(outPointLightsOffset))
+    print("calcd pointlights frames offset {}".format(outPointLightsFramesOffset))
+    print("calcd spotlights offset {}".format(outSpotLightsOffset))
+    print("calcd spotlights frames offset {}".format(outSpotLightsFramesOffset))
+    print("calcd end offset {}".format(outEndOffset))
+    print("")
+
 
     #
     print("nodes = {}".format(len(outNodeList)))
@@ -369,37 +385,67 @@ def runExporter(theWriter,filepath,useNormals,useTexcoords,useTangents,useColors
         print("file camera offset = {}".format(fh.tell()/4))
         
         #write cameras
-        #...
-        
+        for i,x in enumerate(cameras):
+            cameraFrameStart=outCamerasFramesOffset+i*outCameraFrameSizeOffset
+            cameraFramesNum=len(x["keyframes"])
+            
+            fh.write(struct.pack('2I',cameraFrameStart,cameraFramesNum))
+
         #
         print("file camera frames offset = {}".format(fh.tell()/4))
         
         #write cameras frames
-        #...
+        for i,x in enumerate(cameras):
+            for j,kf in enumerate(x["keyframes"]):
+                fh.write(struct.pack('f',kf["frame"]))
+                fh.write(struct.pack('3f',*kf["location"]))
+                fh.write(struct.pack('4f',*kf["rotation"]))
         
         #
-        print("file point lights offset = {}".format(fh.tell()/4))
+        print("file pointlights offset = {}".format(fh.tell()/4))
         
         #write point lights
-        #...
+        for x in pointLights:
+            pointLightFrameStart=outPointLightsFramesOffset+i*outPointLightFrameSizeOffset
+            pointLightFramesNum=len(x["keyframes"])
+            fh.write(struct.pack('2I',pointLightFrameStart,pointLightFramesNum))
         
         #
-        print("file point lights frames offset = {}".format(fh.tell()/4))
+        print("file pointlights frames offset = {}".format(fh.tell()/4))
         
         #write point lights frames
-        #...
-                
+        for x in pointLights:
+            for j,kf in enumerate(x["keyframes"]):
+                fh.write(struct.pack('f',kf["frame"]))
+                fh.write(struct.pack('3Bx',*[int(x*255.0) for x in kf["color"]]))
+                fh.write(struct.pack('f',kf["energy"]))
+                fh.write(struct.pack('f',kf["distance"]))
+                fh.write(struct.pack('2f',kf["linear_attenuation"],kf["quadratic_attenuation"]))
+                fh.write(struct.pack('3f',*kf["location"]))
+      
         #
-        print("file spot lights offset = {}".format(fh.tell()/4))
+        print("file spotlights offset = {}".format(fh.tell()/4))
         
         #write spot lights
-        #...
+        for x in spotLights:
+            spotLightFrameStart=outSpotLightsFramesOffset+i*outSpotLightFrameSizeOffset
+            spotLightFramesNum=len(x["keyframes"])
+            fh.write(struct.pack('2I',spotLightFrameStart,spotLightFramesNum))
         
         #
-        print("file spot lights frames offset = {}".format(fh.tell()/4))
+        print("file spotlights frames offset = {}".format(fh.tell()/4))
         
         #write spot lights frames
-        #...               
+        for x in spotLights:
+            for j,kf in enumerate(x["keyframes"]):
+                fh.write(struct.pack('f',kf["frame"]))
+                fh.write(struct.pack('3Bx',*[int(x*255.0) for x in kf["color"]]))
+                fh.write(struct.pack('f',kf["energy"]))
+                fh.write(struct.pack('f',kf["distance"]))
+                fh.write(struct.pack('2f',kf["linear_attenuation"],kf["quadratic_attenuation"]))
+                fh.write(struct.pack('3f',*kf["location"]))
+                fh.write(struct.pack('4f',*kf["rotation"]))
+                fh.write(struct.pack('2f',kf["spot_blend"],kf["spot_size"]))
         
         #
         print("file end offset = {}".format(fh.tell()/4))
