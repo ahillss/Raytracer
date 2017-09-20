@@ -396,7 +396,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     //vec3 viewPos=vec3(0.0);
     vec3 ro=shadron_CameraView[3].xyz*5.0;
     //mat3 viewRot=lookRot(viewYaw,viewPitch);//mat3(1.0);
-    mat3 viewRot=mat3(shadron_CameraView);
+    mat3 viewRot=transpose(mat3(shadron_CameraView));
     //mat3 viewRot=mat3(shadron_CameraView[0].xyz,shadron_CameraView[1].xyz,shadron_CameraView[2].xyz);
 #else
 
