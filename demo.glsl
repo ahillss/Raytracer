@@ -203,7 +203,7 @@ bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
 
             float t;
             vec2 bc;
-            
+
             if(dot(faceNor,V)<0.0&&intersectTriangle(P,V,ps[0],ps[1],ps[2],bc,t)&&t<last_t) {
                 last_t=t;
                 out_bc=bc;
@@ -338,44 +338,7 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 nor=normalize(fromBarycentric(bc.x,bc.y,ns[0],ns[1],ns[2]));
     vec3 mCol=vec3(1.0);//=fromBarycentric(bc.x,bc.y,cs[0],cs[1],cs[2]);
     vec2 tc=fromBarycentric(bc.x,bc.y,tcs[0],tcs[1],tcs[2]);
-    /*vec4 tng=fromBarycentric(bc.x,bc.y,tangs[0],tangs[1],tangs[2]);
-      tng.xyz=normalize(tng.xyz);
 
-      vec3 bnor = normalize(tng.w * cross(nor, tng.xyz));
-
-      mat3 tbnMat=mat3(tng.x,bnor.x,nor.x,tng.y,bnor.y,nor.y,tng.z,bnor.z,nor.z);
-      mat3 tbnInvMat = mat3(tng.xyz, bnor, nor);
-
-      uint texLoc1=read1u(mtrl+1u+2u);
-
-      if(texLoc1!=0u) {
-      uvec2 texSize1=uint_to_uvec2(read1u(texLoc1));
-
-      vec2 bump=vec2(0.04,-0.03);//scale,bias
-      // vec2 bump=vec2(0.01,-0.005);//scale,bias
-
-      vec2 viewTS=normalize(tbnMat*-rd).xy;
-      vec4 norHgt;
-
-      if(useBumpMapping) {
-      for(int i = 0; i < 4; i++) {
-      norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
-      norHgt.a=1.0-norHgt.a;
-      float height = norHgt.a * bump.x + bump.y;
-      tc += height * norHgt.z * viewTS;
-      }
-      } else {
-      norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
-      }
-
-      if(useNormalMapping) {
-      nor=normalize(norHgt.rgb*2.0-1.0);
-      nor=normalize(tbnInvMat*nor);
-      }
-      //mCol*=norHgt.a;
-      // mCol=norHgt.rgb;//nor*0.5+0.5;
-
-      }*/
 
     uint texLoc0=read1u(mtrl+1u+0u);
 
@@ -395,12 +358,12 @@ vec3 render(vec3 ro,vec3 rd) {
     vec3 eyeDir=normalize(ro-pt);
 
     vec3 lightPos2=lightPos;
-    
-    #ifndef SHADRON
+
+#ifndef SHADRON
     if(lightAnimate) {
         lightPos2+=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,-1.0,-5.0+sin(iTime*0.5)*12.0);
     }
-    #endif
+#endif
 
     //vec3 lightPos2=lightPos2+vec3(cos(iTime*0.25),0.0,sin(iTime*0.25))*2.0;
     vec3 lightDir=normalize(lightPos2-pt);
@@ -424,18 +387,6 @@ vec3 render(vec3 ro,vec3 rd) {
     return min(c,1.0);
 }
 
-mat3 lookRot(float yaw,float pitch) {
-    vec2 s=vec2(sin(pitch),sin(yaw));
-    vec2 c=vec2(cos(pitch),cos(yaw));
-    return mat3(c.y,0.0,-s.y,s.y*s.x,c.x,c.y*s.x,s.y*c.x,-s.x,c.y*c.x);
-}
-
-mat3 orbitRot(float yaw,float pitch) {
-    vec2 s=vec2(sin(pitch),sin(yaw));
-    vec2 c=vec2(cos(pitch),cos(yaw));
-    return mat3(c.y,0.0,-s.y, s.y*s.x,c.x,c.y*s.x, s.y*c.x,-s.x,c.y*c.x);
-}
-
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float fovy=0.7854;
     float aspect=iResolution.x/iResolution.y;
@@ -443,8 +394,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 #ifdef SHADRON
     //vec3 viewPos=vec3(0.0);
-    mat3 viewRot=lookRot(viewYaw,viewPitch);//mat3(1.0);
-#endif
+    vec3 ro=shadron_CameraView[3].xyz*5.0;
+    //mat3 viewRot=lookRot(viewYaw,viewPitch);//mat3(1.0);
+    mat3 viewRot=mat3(shadron_CameraView);
+    //mat3 viewRot=mat3(shadron_CameraView[0].xyz,shadron_CameraView[1].xyz,shadron_CameraView[2].xyz);
+#else
+
     //mat3 viewRot=lookRot(ms.x*-4.0+3.14,ms.y*1.7);
     //vec3 ro=vec3(2.0,2.0,-3.0);
     //vec3 ro=vec3(1.0,3.0,1.0);
@@ -452,6 +407,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     //mat3 viewRot=orbitRot(ms.x*2.0,ms.y*2.0);
     //vec3 ro=viewRot*vec3(0.0,0.0,10.0);
+#endif
 
 
     vec2 uv=fragCoord/iResolution.xy;

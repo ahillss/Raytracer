@@ -1,0 +1,38 @@
+vec4 tng=fromBarycentric(bc.x,bc.y,tangs[0],tangs[1],tangs[2]);
+tng.xyz=normalize(tng.xyz);
+
+vec3 bnor = normalize(tng.w * cross(nor, tng.xyz));
+
+mat3 tbnMat=mat3(tng.x,bnor.x,nor.x,tng.y,bnor.y,nor.y,tng.z,bnor.z,nor.z);
+mat3 tbnInvMat = mat3(tng.xyz, bnor, nor);
+
+uint texLoc1=read1u(mtrl+1u+2u);
+
+if(texLoc1!=0u) {
+    uvec2 texSize1=uint_to_uvec2(read1u(texLoc1));
+
+    vec2 bump=vec2(0.04,-0.03);//scale,bias
+    // vec2 bump=vec2(0.01,-0.005);//scale,bias
+
+    vec2 viewTS=normalize(tbnMat*-rd).xy;
+    vec4 norHgt;
+
+    if(useBumpMapping) {
+        for(int i = 0; i < 4; i++) {
+            norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
+            norHgt.a=1.0-norHgt.a;
+            float height = norHgt.a * bump.x + bump.y;
+            tc += height * norHgt.z * viewTS;
+        }
+    } else {
+        norHgt=sampleNearest(tc,texLoc1+1u,texSize1);
+    }
+
+    if(useNormalMapping) {
+        nor=normalize(norHgt.rgb*2.0-1.0);
+        nor=normalize(tbnInvMat*nor);
+    }
+    //mCol*=norHgt.a;
+    // mCol=norHgt.rgb;//nor*0.5+0.5;
+
+ }

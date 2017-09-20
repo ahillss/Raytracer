@@ -9,3 +9,10 @@ There is also a shadron version available.
 ![](misc/screenshot0.jpg)
 ![](misc/screenshot1.jpg)
 ![](misc/screenshot2.jpg)
+
+## TODO
+
+* test if raymarching is any faster
+* add mipmapping, texture filtering
+* implement keyframes for camera and lights
+* use blender's lighting equations instead
