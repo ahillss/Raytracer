@@ -25,7 +25,7 @@ function loadText(url) {
         var req = new XMLHttpRequest();
         req.open('GET', url);
         req.responseType = "arraybuffer";
-        req.addEventListener("progress", progress);
+        req.addEventListener("progress", (evt)=>{progress(evt.loaded / evt.total);});
 
         req.onload = (function() {
             if (req.status == 200) {

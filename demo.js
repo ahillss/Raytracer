@@ -228,20 +228,24 @@ window.onload=(function() {
     var shaderLog=printLog("shader ");
 
     if(!useImage) {
-        resources.push(loadBinary("mesh/sibenik.dat",(evt)=>{meshLog("downloading : "+((evt.loaded / evt.total)*100).toFixed(1)+ "%");})
+        meshLog("downloading ...");
+        
+        resources.push(loadBinary("mesh/sibenik.dat",(p)=>{meshLog("downloading : "+(p*100).toFixed(1)+ "%");})
             .then((x)=>{meshLog("decompressing ...");return x;})
-            .then(decompressLZMA)
+            .then((x)=>{return decompressLZMA(x,(p)=>{meshLog("decompressing : "+(p*100).toFixed(1)+ "%");});})
             .then((x)=>{meshLog("ready.");return x;})
         );
     } else {
         meshLog("downloading ...");
-        resources.push(loadImage("mesh/sibenik.png")
+        
+        resources.push(loadImage("mesh/sibenik.png",(p)=>{meshLog("downloading : "+(p*100).toFixed(1)+ "%");})
             .then((x)=>{meshLog("ready.");return x;})
         );
     }
 
     shaderLog("downloading ...");
-    resources.push(loadText("demo.glsl")
+    
+    resources.push(loadText("demo.glsl",(p)=>{meshLog("downloading : "+(p*100).toFixed(1)+ "%");})
         .then((x)=>{shaderLog("ready.");return x;}));
 
     Promise.all(resources).then((result)=>{

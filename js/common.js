@@ -1,5 +1,5 @@
 
-function decompressLZMA(c) {
+function decompressLZMA(c,progress) {
     return new Promise(function(resolve, reject) {
         LZMA.decompress(new Uint8Array(c), function(result, error) {
             if(result) {
@@ -14,7 +14,7 @@ function decompressLZMA(c) {
             } else {
                 reject(error);
             }
-        },function(percent){});
+        },progress);
     });
 }
 
