@@ -58,6 +58,29 @@ vec4 fromBarycentric(float b1,float b2,vec4 a0,vec4 a1,vec4 a2) {
     return (1.0-b1-b2 )*a0+b1*a1+b2*a2;
 }
 
+float dot2( in vec3 v ) { return dot(v,v); }
+float udTriangle( vec3 p, vec3 a, vec3 b, vec3 c ) {
+    vec3 ba = b - a; vec3 pa = p - a;
+    vec3 cb = c - b; vec3 pb = p - b;
+    vec3 ac = a - c; vec3 pc = p - c;
+    vec3 nor = cross( ba, ac );
+
+    return sqrt(
+    (sign(dot(cross(ba,nor),pa)) +
+     sign(dot(cross(cb,nor),pb)) +
+     sign(dot(cross(ac,nor),pc))<2.0)
+     ?
+     min( min(
+     dot2(ba*clamp(dot(ba,pa)/dot2(ba),0.0,1.0)-pa),
+     dot2(cb*clamp(dot(cb,pb)/dot2(cb),0.0,1.0)-pb) ),
+     dot2(ac*clamp(dot(ac,pc)/dot2(ac),0.0,1.0)-pc) )
+     :
+     dot(nor,pa)*dot(nor,pa)/dot2(nor) );
+}
+float udBox( vec3 p, vec3 b ) {
+  return length(max(abs(p)-b,0.0));
+}
+
 bool intersectTriangle(vec3 ro,vec3 rd,vec3 p0,vec3 p1,vec3 p2,out vec2 bcOut,out float tOut) {
     //Compute s1
     vec3 e1 = p1 - p0;
@@ -188,35 +211,52 @@ bool intersectTree(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,
 
     uint stkNum=1u;
     uint primsStart,primsNum;
+    
+    vec3 boundSize=bmax-bmin;
+    vec3 boundPos=bmin+boundSize*0.5;
+    float ttt=0.0;
 
     while(searchTree(P,V,invV,INFINITY,stkNum,tmin,tmax,primsStart,primsNum)) {
-        for(uint i=0u;i<primsNum;i++) {
-            vec3 ps[3];
-            uint prim=(primsNum==1u)?primsStart:read1u(primsStart+i);
-            uvec4 tri=uvec4(read3u(prim),prim);//triangle inds
+        float prevDist=udBox( P-boundPos, boundSize );
+        bool onBound=true;
+        
+        while(true) {
+            for(uint i=0u;i<primsNum;i++) {
+                vec3 ps[3];
+                uint prim=(primsNum==1u)?primsStart:read1u(primsStart+i);
+                uvec4 tri=uvec4(read3u(prim),prim);//triangle inds
 
-            for(uint j=0u;j<3u;j++) {
-                ps[j]=uintBitsToFloat(read3u(tri[j]));
+                for(uint j=0u;j<3u;j++) {
+                    ps[j]=uintBitsToFloat(read3u(tri[j]));
+                }
+
+                vec3 faceNor=normalize(cross(ps[1]-ps[0],ps[2]-ps[0]));
+
+                float t;
+                vec2 bc;
+                float dist=udTriangle(P,ps[0],ps[1],ps[2]);
+                
+                if(dist<prevDist) {
+                    prevDist=dist;
+                    onBound=false;
+                }
             }
-
-            vec3 faceNor=normalize(cross(ps[1]-ps[0],ps[2]-ps[0]));
-
-            float t;
-            vec2 bc;
-
-            if(dot(faceNor,V)<0.0&&intersectTriangle(P,V,ps[0],ps[1],ps[2],bc,t)&&t<last_t) {
-                last_t=t;
-                out_bc=bc;
-                out_tri=tri;
+            
+            if(prevDist<0.1) {
+                break;
             }
+            
+            P+=V*prevDist;
+            ttt+=prevDist;
+        
         }
 
-        if(last_t >= tmin && last_t <= tmax) {
+        if(ttt >= tmin && ttt <= tmax) {
             break;
         }
     }
 
-    return (last_t<INFINITY);
+    return (ttt<INFINITY);
 }
 
 bool intersectTreeP(vec3 P,vec3 V,vec3 invV,vec3 bmin,vec3 bmax,float rayMax) {
@@ -359,9 +399,8 @@ vec3 render(vec3 ro,vec3 rd) {
 
     vec3 lightPos2=lightPos;
 
-
     if(lightAnimate) {
-        lightPos2+=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,-1.0,-5.0+sin(iTime*0.5)*12.0);
+        lightPos2+=vec3(cos(iTime*0.1)*sin(iTime*0.1)*1.0,0.0,-5.0+sin(iTime*0.5)*12.0);
     }
 
 

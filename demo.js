@@ -3,11 +3,18 @@ var barFps,barTime,log;
 var prog,screenGeom,cursor;
 var resScale=1.0;
 var countFPS=createFpsCounter();
-var startTime=Date.now();
+
 var hasError=false;
+
+var cameraControl=createFreeLookCameraControl({"pos":[0,0,0],"yaw":0,"pitch":0,"speed":0.01,"slow":0.92,"lookSpeed":0.005});
 
 var viewPos=[0,0,0],viewYawPitch=[0,0];
 var mouseLocked=false,moving=[0,0,0];
+
+var getTime=(function(){var start;return (()=>{start=start||Date.now(); return ((Date.now()-start)/1000)%3.402823e+38;});})();
+
+
+var fixedTimeStep=createFixedTimeStep(1/60,5);
 
 var MyMenu = function() {
     this.bumpMapping=true;
@@ -50,34 +57,33 @@ function onAnimate() {
     var width=Math.floor(canvas.offsetWidth*resScale);
     var height=Math.floor(canvas.offsetHeight*resScale);
 
-    var difTime=Date.now()-startTime;
-
-    if(difTime>=3.402823e+38) {
-        startTime=Date.now();
-        difTime=0;
-    }
-
-    var t=difTime/1000.0;
+    var curTime=getTime();
+    
+    cameraControl.update();
+        
+    //
+    fixedTimeStep(curTime,(dt)=>{
+        cameraControl.step(dt);
+    },(it)=>{
+        cameraControl.render(it);
+    });
+    
     var cursor2=[cursor[0]*resScale,cursor[1]*resScale,cursor[2]*resScale,cursor[3]*resScale];
 
     //var ms=(cursor2[0]==0&&cursor2[1]==0)?[0,0]:[(cursor2[0]/width)*2-1,(cursor2[1]/height)*2-1];
 
-    var viewRot=lookRot(viewYawPitch[0]*1,viewYawPitch[1]*1);
-    calcViewPos(viewPos,viewRot,moving);
-
-    moving[0] =0;
-    moving[1] =0;
-    moving[2] =0;
-
     //canvas.width=width;
     //canvas.height=height;
+    
+    var viewPos=cameraControl.getPos();
+    var viewRot=cameraControl.getRot();
 
     prog.uniform3fv("viewPos",viewPos);
     prog.uniformMatrix3fv("viewRot",false,viewRot);
     prog.uniform3f("lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
 
     prog.uniform3f("iResolution",width,height,0);
-    prog.uniform1f("iTime",t);
+    prog.uniform1f("iTime",curTime);
     prog.uniform4fv("iMouse",cursor2);
 
     prog.uniform1i("useLinearFiltering",myMenu.linearFiltering);
@@ -87,56 +93,66 @@ function onAnimate() {
 
     screenGeom.draw(width,height);
 
-    if(barFps){barFps.innerHTML = countFPS() + " fps";}
-    if(barTime){barTime.innerHTML = t.toFixed(2) ;}
+    if(barFps){barFps.innerHTML = countFPS().toFixed(1) + " fps";}
+    if(barTime){barTime.innerHTML = curTime.toFixed(2) ;}
 
     requestAnimFrame(onAnimate);
 }
 
+
 function registerInputEvents(element) {
     (function(){
-        var lmb=false;
+        //var lmb=false;
 
-        element.addEventListener("wheel", (function(event){
-            moving[2]+=Math.sign(event.deltaY);
-            moving[0]+=Math.sign(event.deltaX);
+        window.addEventListener("keydown", (function(event){
+                cameraControl.keydown(event);
+        }));
+        
+        window.addEventListener("keyup", (function(event){
+                cameraControl.keyup(event);
         }));
 
         element.addEventListener('mousemove', function(event) {
-            if(PL.isEnabled() || (!PL.isSupported && lmb)) {
-                var s=0.005;
-                viewYawPitch[0]-=event.movementX*s;
-                viewYawPitch[1]-=event.movementY*s;
-                viewYawPitch[1]= (viewYawPitch[1]>1.7)?1.7:viewYawPitch[1];
-                viewYawPitch[1]= (viewYawPitch[1]<-1.7)?-1.7:viewYawPitch[1];
+            if(PL.isEnabled() //|| (!PL.isSupported && lmb)
+                ) {
+                cameraControl.mousemove(event);
             }
         }, false);
 
         element.addEventListener("mousedown",function(event){
             if(event.button==0){
-                lmb=true;
-
-                PL.requestPointerLock(element);
-            }
-
-            if(event.button==1) {
-                //prog.uniform3fv("lightPos",viewPos);
-
+                //lmb=true;
+                //PL.requestPointerLock(element);
+                
+                if(PL.isEnabled()) {
+                    PL.exitPointerLock();
+                } else {
+                    PL.requestPointerLock(element);
+                }
             }
         });
 
         window.addEventListener("mouseup",function(event){
-            if(event.button==0&&lmb){
-                lmb=false;
-                PL.exitPointerLock();
-            }
+            //if(event.button==0&&lmb){
+            //    lmb=false;
+            //    PL.exitPointerLock();
+            //}
         });
     })();
 }
 
-function printLog(msg) {
-    log.innerHTML+="<br>"+msg;
-}
+function printLog(msg){
+    var logElement=document.getElementById("log");
+    var m=document.createElement('span');
+    m.innerHTML=msg;
+        
+    var e=document.createElement('span');
+        
+    logElement.appendChild(document.createElement('br'));
+    logElement.appendChild(m);
+    logElement.appendChild(e);
+    return (function(x){e.innerHTML=x;});
+};
 
 function initGui() {
     var gui = new dat.GUI();
@@ -207,46 +223,58 @@ window.onload=(function() {
     var resources=[];
     
     var mesh;
+    
+    var meshLog=printLog("mesh ");
+    var shaderLog=printLog("shader ");
 
     if(!useImage) {
-        printLog("mesh downloading...");
-        resources.push(loadBinary("mesh/sibenik.dat")
-            .then((x)=>{printLog("mesh downloaded.");return x;})
-            .then((x)=>{printLog("mesh decompressing...");return x;})
+        resources.push(loadBinary("mesh/sibenik.dat",(evt)=>{meshLog("downloading : "+((evt.loaded / evt.total)*100).toFixed(1)+ "%");})
+            .then((x)=>{meshLog("decompressing ...");return x;})
             .then(decompressLZMA)
-            .then((x)=>{printLog("mesh decompressed.");return x;})
+            .then((x)=>{meshLog("ready.");return x;})
         );
     } else {
-        printLog("mesh downloading...");
+        meshLog("downloading ...");
         resources.push(loadImage("mesh/sibenik.png")
-            .then((x)=>{printLog("mesh downloaded.");return x;})
+            .then((x)=>{meshLog("ready.");return x;})
         );
     }
 
-    printLog("shader downloading...");
+    shaderLog("downloading ...");
     resources.push(loadText("demo.glsl")
-        .then((x)=>{printLog("shader downloaded.");return x;}));
+        .then((x)=>{shaderLog("ready.");return x;}));
 
     Promise.all(resources).then((result)=>{
-        printLog("mesh loading...");
-        
         if(!useImage) {
             createBind2dTextureData1UI(gl,0,result[0]);
         } else {
             createBind2dTexture(gl,0,result[0],{mipmap:false,mag_filter:"nearest",min_filter:"nearest",wrap_s:"clamp_to_edge",wrap_t:"clamp_to_edge"});
         }
-        printLog("mesh loaded.");
 
-        printLog("shader loading...");
         if(!prog.set(result[1])) {
             return;
         }
 
         prog.use();
         prog.uniform1i("iChannel0",0);
-        printLog("shader loaded.");
 
     });
 
     onAnimate();
 });
+
+
+window.onresize=(function(){window.scrollTo(0,0);});
+
+window.requestAnimFrame =
+    window.requestAnimationFrame ||
+    window.webkitRequestAnimationFrame ||
+    window.mozRequestAnimationFrame ||
+    window.oRequestAnimationFrame ||
+    window.msRequestAnimationFrame ||
+    (function(c,e){window.setTimeout(c,1000/60)});
+
+navigator.getUserMedia = navigator.getUserMedia ||
+    navigator.webkitGetUserMedia ||
+    navigator.mozGetUserMedia;
+
