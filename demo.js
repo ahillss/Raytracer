@@ -1,62 +1,86 @@
-var canvas,gl,root;
-var barFps,barTime,log;
+var canvas,gl;
 var prog,screenGeom,cursor;
-var resScale=1.0;
 var countFPS=createFpsCounter();
-
+var myMenu;
 var hasError=false;
 
-var cameraControl=createFreeLookCameraControl({"pos":[0,0,0],"yaw":0,"pitch":0,"speed":0.01,"slow":0.92,"lookSpeed":0.005});
+var cameraControl=createFreeLookCameraControl({
+    "pos":[0,0,0],
+    "yaw":0,
+    "pitch":0,
+    "speed":0.01,
+    "slow":0.92,
+    "lookSpeed":0.005
+});
 
-var viewPos=[0,0,0],viewYawPitch=[0,0];
-var mouseLocked=false,moving=[0,0,0];
-
-var getTime=(function(){var start;return (()=>{start=start||Date.now(); return ((Date.now()-start)/1000)%3.402823e+38;});})();
-
+var getTime=(function(){
+    var start;
+    return (()=>{
+        start=start||Date.now(); 
+        return ((Date.now()-start)/1000)%3.402823e+38;
+   });
+})();
 
 var fixedTimeStep=createFixedTimeStep(1/60,5);
 
-var MyMenu = function() {
-    this.bumpMapping=true;
-    this.normalMapping=true;
-    this.linearFiltering = false;
-
-    this.lightAnimate=true;
-    this.lightPosX=0;
-    this.lightPosY=0;
-    this.lightPosZ=-3;
-};
-
-var myMenu = new MyMenu();
-
-function lookRot(yaw,pitch) {
-    var sx=Math.sin(pitch);
-    var sy=Math.sin(yaw);
-    var cx=Math.cos(pitch);
-    var cy=Math.cos(yaw);
-    return [cy,0,-sy, sy*sx,cx,cy*sx, sy*cx,-sx,cy*cx]; //col major
-}
-
-function calcViewPos(pos,rot,move) {
-    pos[0]+=rot[6]*move[2] +rot[0]*move[0];
-    pos[1]+=rot[7]*move[2]+rot[1]*move[0];
-    pos[2]+=rot[8]*move[2]+rot[2]*move[0];
-}
 
 function setErrorMsg(msg) {
+    var root=document.getElementById("root");
     root.innerHTML=hasError?root.innerHTML:'';
     hasError=true;
-    root.innerHTML+='<pre>'+msg+'</pre>';
+    root.innerHTML+='<pre>'+msg.replace("\n","<br/>");+'</pre>';
 }
+
+var printLog=(function(){
+    var logElement;
+   
+    return (function(msg){
+        logElement=logElement||document.getElementById("log");
+        
+        var m=document.createElement('span');
+        m.innerHTML=msg.replace("\n","<br/>");
+            
+        var e=document.createElement('span');
+            
+        logElement.appendChild(document.createElement('br'));
+        logElement.appendChild(m);
+        logElement.appendChild(e);
+        return (function(x){e.innerHTML=x.replace("\n","<br/>");});
+   });
+})();
+
+var updateBarFps=(function(){
+   var element;
+   
+   return (function(x){
+        element=element||document.getElementById("barFps");
+        element.innerHTML = x.toFixed(1)  + " fps";
+   });
+})();
+
+var updateBarTime=(function(){
+   var element;
+   
+   return (function(x){
+        element=element||document.getElementById("barTime");
+        element.innerHTML = x.toFixed(2);
+   });
+})();
 
 function onAnimate() {
     if(hasError) {
         return false;
     }
 
+    var resScale=1;//0.5;//broken, meant to stretch (smaller resolution) rendering to canvas size
     var width=Math.floor(canvas.offsetWidth*resScale);
     var height=Math.floor(canvas.offsetHeight*resScale);
-
+    //canvas.width=width;
+    //canvas.height=height;
+    gl.viewport(0, 0, width,height);
+    var cursor2=[cursor[0]*resScale,cursor[1]*resScale,cursor[2]*resScale,cursor[3]*resScale];
+    //var ms=(cursor2[0]==0&&cursor2[1]==0)?[0,0]:[(cursor2[0]/width)*2-1,(cursor2[1]/height)*2-1];
+    
     var curTime=getTime();
     
     cameraControl.update();
@@ -68,37 +92,32 @@ function onAnimate() {
         cameraControl.render(it);
     });
     
-    var cursor2=[cursor[0]*resScale,cursor[1]*resScale,cursor[2]*resScale,cursor[3]*resScale];
-
-    //var ms=(cursor2[0]==0&&cursor2[1]==0)?[0,0]:[(cursor2[0]/width)*2-1,(cursor2[1]/height)*2-1];
-
-    //canvas.width=width;
-    //canvas.height=height;
-    
     var viewPos=cameraControl.getPos();
     var viewRot=cameraControl.getRot();
 
-    prog.uniform3fv("viewPos",viewPos);
-    prog.uniformMatrix3fv("viewRot",false,viewRot);
-    prog.uniform3f("lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
+    if(prog){
+        uniform3fv(gl,"viewPos",viewPos);
+        uniformMatrix3fv(gl,"viewRot",false,viewRot);
+        uniform3f(gl,"lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
 
-    prog.uniform3f("iResolution",width,height,0);
-    prog.uniform1f("iTime",curTime);
-    prog.uniform4fv("iMouse",cursor2);
+        uniform3f(gl,"iResolution",width,height,0);
+        uniform1f(gl,"iTime",curTime);
+        uniform4fv(gl,"iMouse",cursor2);
 
-    prog.uniform1i("useLinearFiltering",myMenu.linearFiltering);
-    prog.uniform1i("useBumpMapping",myMenu.bumpMapping);
-    prog.uniform1i("useNormalMapping",myMenu.normalMapping);
-    prog.uniform1i("lightAnimate",myMenu.lightAnimate);
+        uniform1i(gl,"useLinearFiltering",myMenu.linearFiltering);
+        uniform1i(gl,"useBumpMapping",myMenu.bumpMapping);
+        uniform1i(gl,"useNormalMapping",myMenu.normalMapping);
+        uniform1i(gl,"lightAnimate",myMenu.lightAnimate);
+        uniformsApply(gl,prog);
 
-    screenGeom.draw(width,height);
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    }
 
-    if(barFps){barFps.innerHTML = countFPS().toFixed(1) + " fps";}
-    if(barTime){barTime.innerHTML = curTime.toFixed(2) ;}
+    updateBarFps(countFPS());
+    updateBarTime(curTime);
 
     requestAnimFrame(onAnimate);
 }
-
 
 function registerInputEvents(element) {
     (function(){
@@ -113,16 +132,14 @@ function registerInputEvents(element) {
         }));
 
         element.addEventListener('mousemove', function(event) {
-            if(PL.isEnabled() //|| (!PL.isSupported && lmb)
-                ) {
+            if(PL.isEnabled()) { //|| (!PL.isSupported && lmb)
                 cameraControl.mousemove(event);
             }
         }, false);
 
         element.addEventListener("mousedown",function(event){
             if(event.button==0){
-                //lmb=true;
-                //PL.requestPointerLock(element);
+                //lmb=true; PL.requestPointerLock(element);
                 
                 if(PL.isEnabled()) {
                     PL.exitPointerLock();
@@ -133,28 +150,23 @@ function registerInputEvents(element) {
         });
 
         window.addEventListener("mouseup",function(event){
-            //if(event.button==0&&lmb){
-            //    lmb=false;
-            //    PL.exitPointerLock();
-            //}
+            //if(event.button==0&&lmb){ lmb=false; PL.exitPointerLock(); }
         });
     })();
 }
 
-function printLog(msg){
-    var logElement=document.getElementById("log");
-    var m=document.createElement('span');
-    m.innerHTML=msg;
-        
-    var e=document.createElement('span');
-        
-    logElement.appendChild(document.createElement('br'));
-    logElement.appendChild(m);
-    logElement.appendChild(e);
-    return (function(x){e.innerHTML=x;});
-};
-
 function initGui() {
+    myMenu = {
+        "bumpMapping":true,
+        "normalMapping":true,
+        "linearFiltering": false,
+
+        "lightAnimate":true,
+        "lightPosX":0,
+        "lightPosY":0,
+        "lightPosZ":-3,
+    };
+    
     var gui = new dat.GUI();
     gui.add(myMenu, 'linearFiltering');
     //gui.add(myMenu, 'bumpMapping');
@@ -163,22 +175,13 @@ function initGui() {
     gui.add(myMenu, 'lightPosX', -20, 20).name('lightPosX').step(0.1);;
     gui.add(myMenu, 'lightPosY', -20, 20).name('lightPosY').step(0.1);;
     gui.add(myMenu, 'lightPosZ', -20, 20).name('lightPosZ').step(0.1);;
-
-
 }
 
 window.onload=(function() {
-    log=document.getElementById("log");
-    barTime=document.getElementById("barTime");
-    barFps=document.getElementById("barFps");
     canvas=document.getElementById("canvas");
-    root=document.getElementById("root");
-    gl=createGLContext(canvas,{});
-
     canvas.onselectstart=null;
-
+    gl=createGLContext(canvas,{},setErrorMsg);
     registerInputEvents(canvas);
-
     initGui();
     
     if(!gl) {
@@ -211,20 +214,21 @@ window.onload=(function() {
 
     var footer="void main(){mainImage(outColor,gl_FragCoord.xy);}";
 
-    if(!(prog=createProgram(gl,setErrorMsg,header,footer))){
-        return;
-    }
-
-    prog.use();
 
     cursor=shadertoyMouseInput(canvas);
     screenGeom=createBindScreenGeometry(gl);
-
+    
+    var vsSrc="#version 300 es\nlayout(location=0) in vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}";
+    var vs=createShader(gl,"vertex shader",gl.VERTEX_SHADER,vsSrc,(x)=>{printLog(x);});
+   
+    
     var resources=[];
     
     var mesh;
     
     var meshLog=printLog("mesh ");
+    
+    
     var shaderLog=printLog("shader ");
 
     if(!useImage) {
@@ -245,25 +249,31 @@ window.onload=(function() {
 
     shaderLog("downloading ...");
     
-    resources.push(loadText("demo.glsl",(p)=>{meshLog("downloading : "+(p*100).toFixed(1)+ "%");})
-        .then((x)=>{shaderLog("ready.");return x;}));
+    resources.push(loadText("demo.glsl",(p)=>{shaderLog("downloading : "+(p*100).toFixed(1)+ "%");})
+        .then((x)=>{shaderLog("ready.");return x;})
+        .then((src)=>{
+            var src2="#version 300 es\n"+header+"\n#line 0\n"+src+"\n"+footer;
+            return createShaderPromise(gl,"fragment shader",gl.FRAGMENT_SHADER,src2);
+        }));
 
     Promise.all(resources).then((result)=>{
         if(!useImage) {
             createBind2dTextureData1UI(gl,0,result[0]);
         } else {
-            createBind2dTexture(gl,0,result[0],{mipmap:false,mag_filter:"nearest",min_filter:"nearest",wrap_s:"clamp_to_edge",wrap_t:"clamp_to_edge"});
+            createBind2dTexture(gl,0,result[0]);
         }
 
-        if(!prog.set(result[1])) {
-            return;
+        var fs=result[1];
+        
+        prog=createProgram(gl,"shader program",vs,fs,printLog);
+        
+        if(prog) {
+            gl.useProgram(prog);
         }
 
-        prog.use();
-        prog.uniform1i("iChannel0",0);
+    },setErrorMsg);
 
-    });
-
+    uniform1i(gl,"iChannel0",0);
     onAnimate();
 });
 
