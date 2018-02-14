@@ -274,6 +274,8 @@ window.onload=(function() {
     },setErrorMsg);
 
     uniform1i(gl,"iChannel0",0);
+    //setDrawStates(gl,true,{"cull_face":true});
+    gl.enable(gl.CULL_FACE);
     onAnimate();
 });
 
