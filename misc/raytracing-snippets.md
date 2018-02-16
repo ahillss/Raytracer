@@ -378,6 +378,18 @@ vec3 calcSky(vec3 d) {
 }
 
 //
+float lerp(float x,float y,float a) {
+    return x*(1.0-a)+y*a;
+}
+
+float clamp(float x,float minVal,float maxVal) {
+    return min(max(x, minVal), maxVal);
+}
+
+float smoothstep(float edge0,float edge1,float x) {
+    float t=clamp((x-edge0)/(edge1-edge0), 0.0,1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
 
 float smooth_keyframe(float time,float frame0,float frame1,float val0,float val1) {
     float f=(time-frame0)/(frame1-frame0);

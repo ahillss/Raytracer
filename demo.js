@@ -1,5 +1,5 @@
 var canvas,gl;
-var prog,screenGeom,cursor;
+var prog,cursor;
 var countFPS=createFpsCounter();
 var myMenu;
 var hasError=false;
@@ -216,7 +216,7 @@ window.onload=(function() {
 
 
     cursor=shadertoyMouseInput(canvas);
-    screenGeom=createBindScreenGeometry(gl);
+    createBindScreenGeometry(gl);
     
     var vsSrc="#version 300 es\nlayout(location=0) in vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}";
     var vs=createShader(gl,"vertex shader",gl.VERTEX_SHADER,vsSrc,(x)=>{printLog(x);});

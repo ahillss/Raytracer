@@ -181,7 +181,7 @@ var createFreeLookCameraControl;
             function onMouseMove(event) {
                 yaw-=event.movementX*lookSpeed;
                 pitch-=event.movementY*lookSpeed;
-                pitch=Math.min(Math.max(pitch,-1.7),1.7);
+                pitch=Math.min(Math.max(pitch,-1.57),1.57);
             }
 
             return {
