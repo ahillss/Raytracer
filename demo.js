@@ -1,6 +1,5 @@
 var canvas,gl;
-var prog,cursor;
-var countFPS=createFpsCounter();
+var prog;
 var myMenu;
 var hasError=false;
 
@@ -13,16 +12,9 @@ var cameraControl=createFreeLookCameraControl({
     "lookSpeed":0.005
 });
 
-var getTime=(function(){
-    var start;
-    return (()=>{
-        start=start||Date.now(); 
-        return ((Date.now()-start)/1000)%3.402823e+38;
-   });
-})();
-
-var fixedTimeStep=createFixedTimeStep(1/60,5);
-
+var getTime=(()=>{var start;return(()=>{start=start||Date.now();return((Date.now()-start)/1000)%3.402823e+38;});})();
+var calcFPS=(()=>{var c=0,x=0.0,la=0.0;return(()=>{var cu=Date.now()/1000.0;if(la==0.0){la=cu;}var dt=cu-la;if(dt>=1.0){x=c/dt;c=0;la=cu;}c++;return x;});})();
+var fixedTimeStep=(()=>{var st=1.0/60.0,ac;return((cu,A,B)=>{var c=0;ac=ac||cu;while(ac+st<=cu){c+=1;ac+=st;A(st);ac=(c==5)?cu:ac;}B(st,(cu-ac)/st);});})();
 
 function setErrorMsg(msg) {
     var root=document.getElementById("root");
@@ -78,7 +70,7 @@ function onAnimate() {
     //canvas.width=width;
     //canvas.height=height;
     gl.viewport(0, 0, width,height);
-    var cursor2=[cursor[0]*resScale,cursor[1]*resScale,cursor[2]*resScale,cursor[3]*resScale];
+    //var cursor2=[cursor[0]*resScale,cursor[1]*resScale,cursor[2]*resScale,cursor[3]*resScale];
     //var ms=(cursor2[0]==0&&cursor2[1]==0)?[0,0]:[(cursor2[0]/width)*2-1,(cursor2[1]/height)*2-1];
     
     var curTime=getTime();
@@ -96,24 +88,24 @@ function onAnimate() {
     var viewRot=cameraControl.getRot();
 
     if(prog){
-        uniform3fv(gl,"viewPos",viewPos);
-        uniformMatrix3fv(gl,"viewRot",false,viewRot);
-        uniform3f(gl,"lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
+        mygl.uniform3fv(gl,"viewPos",viewPos);
+        mygl.uniformMatrix3fv(gl,"viewRot",false,viewRot);
+        mygl.uniform3f(gl,"lightPos",myMenu.lightPosX,myMenu.lightPosY,myMenu.lightPosZ);
 
-        uniform3f(gl,"iResolution",width,height,0);
-        uniform1f(gl,"iTime",curTime);
-        uniform4fv(gl,"iMouse",cursor2);
+        mygl.uniform3f(gl,"iResolution",width,height,0);
+        mygl.uniform1f(gl,"iTime",curTime);
+        //mygl.uniform4fv(gl,"iMouse",cursor2);
 
-        uniform1i(gl,"useLinearFiltering",myMenu.linearFiltering);
-        uniform1i(gl,"useBumpMapping",myMenu.bumpMapping);
-        uniform1i(gl,"useNormalMapping",myMenu.normalMapping);
-        uniform1i(gl,"lightAnimate",myMenu.lightAnimate);
-        uniformsApply(gl,prog);
+        mygl.uniform1i(gl,"useLinearFiltering",myMenu.linearFiltering);
+        mygl.uniform1i(gl,"useBumpMapping",myMenu.bumpMapping);
+        mygl.uniform1i(gl,"useNormalMapping",myMenu.normalMapping);
+        mygl.uniform1i(gl,"lightAnimate",myMenu.lightAnimate);
+        mygl.uniformsApply(gl,prog);
 
         gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     }
 
-    updateBarFps(countFPS());
+    updateBarFps(calcFPS());
     updateBarTime(curTime);
 
     requestAnimFrame(onAnimate);
@@ -180,7 +172,7 @@ function initGui() {
 window.onload=(function() {
     canvas=document.getElementById("canvas");
     canvas.onselectstart=null;
-    gl=createGLContext(canvas,{},setErrorMsg);
+    gl=mygl.createContext(canvas,{},setErrorMsg);
     registerInputEvents(canvas);
     initGui();
     
@@ -215,9 +207,14 @@ window.onload=(function() {
     var footer="void main(){mainImage(outColor,gl_FragCoord.xy);}";
 
 
-    cursor=shadertoyMouseInput(canvas);
-    createBindScreenGeometry(gl);
+    //cursor=shadertoyMouseInput(canvas);
     
+    
+    //
+    var vao=mygl.createVao(gl,[0],[2],[gl.FLOAT],[mygl.createVertBuf(gl,Float32Array.from([-1,-1,1,-1,-1,1,1,1]))],null);
+    gl.bindVertexArray(vao);
+    
+    //
     var vsSrc="#version 300 es\nlayout(location=0) in vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}";
     var vs=createShader(gl,"vertex shader",gl.VERTEX_SHADER,vsSrc,(x)=>{printLog(x);});
    
@@ -273,9 +270,7 @@ window.onload=(function() {
 
     },setErrorMsg);
 
-    uniform1i(gl,"iChannel0",0);
-    //setDrawStates(gl,true,{"cull_face":true});
-    gl.enable(gl.CULL_FACE);
+    mygl.uniform1i(gl,"iChannel0",0);
     onAnimate();
 });
 
