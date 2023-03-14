@@ -2,7 +2,7 @@
 
 A real-time raytracer in a WebGL2 fragment shader that reads a kd-tree and mesh data from a texture (generated with a blender plugin).
 
-You can try it [online here](http://andrewhills.github.io/Raytracer/demo.html).
+You can try it [online here](http://ahilus.github.io/Raytracer/demo.html).
 
 There is also a shadron version available.
 
